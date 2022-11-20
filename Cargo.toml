@@ -11,9 +11,6 @@ homepage = "https://crates.io/crates/microtensor"
 repository = "https://github.com/syntheticore/microtensor"
 readme = "README.md"
 
-[badges]
-maintenance = { status = "actively-developed" }
-
 [dependencies]
 rand = "0.7.3"
 num-traits = "0.2.15"
