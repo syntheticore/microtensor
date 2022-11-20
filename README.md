@@ -76,3 +76,5 @@ let _b: u16 = t.argmax(0).item(); // argmax will produce a Tensor<u16> here
 ### More examples
 Check the `/examples` folder for more example code.
 
+## License
+  MIT

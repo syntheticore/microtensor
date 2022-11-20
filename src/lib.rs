@@ -12,7 +12,7 @@
 //! broadcasted to matching dimensions automatically for most operations.
 //!
 //! - **Arbitrary inner types** -- Tensors can store *almost* any data type and
-//! compute gradients for any inner type that satisfies [Real](scalar::Real).
+//! compute gradients for any inner type that satisfies [scalar::Real].
 //!
 //! - **Zero-copy views** — Tensors may be sliced, indexed, reshaped, transposed and
 //! broadcasted without actually copying any data in most situations.
