@@ -1,3 +1,5 @@
+![Maintenance](https://img.shields.io/badge/maintenance-activly--developed-brightgreen.svg)
+
 # microtensor
 
 Automatic differentiation for tensor operations.

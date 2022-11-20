@@ -7,10 +7,12 @@ authors = ["Björn Breitgoff <syntheticore@gmail.com>"]
 keywords = ["autograd", "tensor", "ml"]
 categories = ["mathematics", "science"]
 license = "MIT"
-license-file = "LICENSE"
-readme = "README.md"
-homepage = "https://github.com/syntheticore/microtensor"
+homepage = "https://crates.io/crates/microtensor"
 repository = "https://github.com/syntheticore/microtensor"
+readme = "README.md"
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 rand = "0.7.3"
