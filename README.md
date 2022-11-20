@@ -1,7 +1,7 @@
+# microtensor
+
 [![Crate](https://img.shields.io/crates/v/microtensor.svg)](https://crates.io/crates/microtensor)
 [![API](https://docs.rs/microtensor/badge.svg)](https://docs.rs/microtensor)
-
-# microtensor
 
 Automatic differentiation for tensor operations.
 

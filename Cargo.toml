@@ -15,7 +15,7 @@ readme = "README.md"
 rand = "0.7.3"
 num-traits = "0.2.15"
 serde = { version = "1.0.145", features = ["derive", "rc"] }
-serde_traitobject = "0.2.7"
+serde_traitobject = { version = "0.2.7", git = "https://github.com/syntheticore/serde_traitobject" }
 postcard = { version = "1.0.2", features = ["alloc"] }
 nalgebra = "0.31.4"
 
