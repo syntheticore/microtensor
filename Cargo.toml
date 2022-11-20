@@ -1,0 +1,28 @@
+[package]
+name = "microtensor"
+version = "0.1.0"
+edition = "2021"
+description = "Automatic differentiation for tensor operations"
+authors = ["Björn Breitgoff <syntheticore@gmail.com>"]
+readme = "README.md"
+
+[dependencies]
+rand = "0.7.3"
+num-traits = "0.2.15"
+serde = { version = "1.0.145", features = ["derive", "rc"] }
+serde_traitobject = "0.2.7"
+postcard = { version = "1.0.2", features = ["alloc"] }
+nalgebra = "0.31.4"
+
+rayon = { version = "1.5.3", optional = true }
+
+[features]
+default = ["rayon"]
+rayon = ["dep:rayon"]
+
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+lto = 'fat'
+codegen-units = 1
