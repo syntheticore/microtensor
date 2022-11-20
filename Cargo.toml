@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "Automatic differentiation for tensor operations"
 authors = ["Björn Breitgoff <syntheticore@gmail.com>"]
+keywords = ["autograd", "tensor", "ml"]
+categories = ["mathematics", "science"]
+license = "MIT"
+license-file = "LICENSE"
 readme = "README.md"
+homepage = "https://github.com/syntheticore/microtensor"
+repository = "https://github.com/syntheticore/microtensor"
 
 [dependencies]
 rand = "0.7.3"

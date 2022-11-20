@@ -41,11 +41,11 @@
 //!
 //!   // Nudge w and b in order to minimize loss
 //!   for mut param in loss.parameters() {
-//!     param -= param.grad().unwrap() * 0.01
+//!     param -= param.grad().unwrap() * 0.01;
 //!   }
 //!
 //!   // Reset gradients
-//!   loss.reset()
+//!   loss.reset();
 //! }
 //! ```
 //!
