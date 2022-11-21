@@ -76,8 +76,8 @@ where
     Self::scalar(e).pow(self)
   }
 
-  fn norm(&self) -> Self {
-    self.sqr().sum(0).sqrt()
+  fn norm(&self, dim: isize) -> Self {
+    self.sqr().sum(dim).sqrt()
   }
 
   fn mean(&self, dim: isize) -> Self {
@@ -93,9 +93,9 @@ where
     (self - &self.mean(dim).unsqueeze(-1)).sqr().mean(dim)
   }
 
-  fn softmax(&self) -> Self { //XXX choose dim / no batch dim
-    let exp = (self - &self.max(0)).exp();
-    &exp / &exp.sum(0)
+  fn softmax(&self, dim: isize) -> Self {
+    let exp = (self - &self.max(dim).unsqueeze(-1)).exp();
+    &exp / &exp.sum(dim).unsqueeze(-1)
   }
 
   fn dot(&self, rhs: &Self, dim: isize) -> Self {
@@ -114,5 +114,13 @@ mod tests {
     let a = Tensor::new(&[3,2], vec![1., 2., 3., 4., 5., 6.]).trained();
     assert_eq!(a.mean(0).tensor(), &Tensor::vec(&[3.5]));
     assert_eq!(a.mean(-1).tensor(), &Tensor::vec(&[1.5, 3.5, 5.5]));
+  }
+
+  #[test]
+  fn softmax() {
+    let a = Tensor::arrange(&[3,2], 1.0, 1.0).softmax(-1);
+    for row in a.iter(0) {
+      assert_eq!(row.sum(0).item(), 1.0);
+    }
   }
 }
