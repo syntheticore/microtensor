@@ -312,15 +312,19 @@ impl<T: Real> UnaryOp<T> for Sum {
   }
 
   fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let rank = lhs.shape().rank();
-    let dim = negative_index(self.dim, rank, false);
-    let removed = rank - dim;
-    let mut grad = grad.clone();
-    for _ in 0..removed {
-      grad = grad.unsqueeze(-1);
-    }
-    grad
+    uncollapse(self.dim, lhs, grad)
   }
+}
+
+fn uncollapse<T: Real>(dim: isize, tensor: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  let rank = tensor.shape().rank();
+  let dim = negative_index(dim, rank, false);
+  let removed = rank - dim;
+  let mut grad = grad.clone();
+  for _ in 0..removed {
+    grad = grad.unsqueeze(-1);
+  }
+  grad
 }
 
 
@@ -344,9 +348,9 @@ pub struct Min {
 impl<T: Real> UnaryOp<T> for Min {
   fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> { lhs.min(self.dim) }
 
-  fn derivative(&self, _lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     // grad * lhs.min_index(self.dim).one_hot(lhs.shape()[self.dim])
-    grad.clone() //XXX
+    uncollapse(self.dim, lhs, grad) //XXX
   }
 }
 
@@ -359,7 +363,9 @@ pub struct Max {
 impl<T: Real> UnaryOp<T> for Max {
   fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> { lhs.max(self.dim) }
 
-  fn derivative(&self, _lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> { grad.clone() } //XXX
+  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    uncollapse(self.dim, lhs, grad) //XXX
+  }
 }
 
 
