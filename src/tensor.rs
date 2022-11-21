@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefMut, RefCell};
 use std::ops::Range;
 use std::fmt::Debug;
 
@@ -100,6 +100,10 @@ impl<T: Inner> Tensor<T> {
 
   pub fn raw(&self) -> Ref<Vec<T>> {
     self.data.borrow()
+  }
+
+  pub fn raw_mut(&self) -> RefMut<Vec<T>> {
+    self.data.borrow_mut()
   }
 
   pub fn into_raw(self) -> Vec<T> {

@@ -48,13 +48,13 @@ struct Node<T: Real + 'static> {
   cell: NodeCell<T>,
   op: Option<Op<T>>,
   previous: Vec<Rc<Self>>,
+  trainable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct NodeCell<T: Real> {
   data: Tensor<T>,
   grad: Option<Tensor<T>>,
-  trainable: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -170,10 +170,10 @@ impl<T: Real + 'static> Variable<T> {
             None
           },
           data: array,
-          trainable,
         },
         op: None,
         previous: vec![],
+        trainable,
       }),
     }
   }
@@ -185,10 +185,10 @@ impl<T: Real + 'static> Variable<T> {
         cell: NodeCell {
           grad: grad.then(|| Tensor::zeros(&data.shape().dims) ),
           data,
-          trainable: false,
         },
         op: Some(op),
         previous,
+        trainable: false,
       }),
     }
   }
@@ -247,7 +247,7 @@ impl<T: Real + 'static> Variable<T> {
   pub fn parameters(&self) -> Vec<Self> {
     self.history()
       .into_iter()
-      .filter(|node| node.cell.trainable )
+      .filter(|node| node.trainable )
       .map(|node| Self { node } )
       .collect()
   }
@@ -355,7 +355,7 @@ impl<T: Real> std::ops::DivAssign<Tensor<T>> for Variable<T> {
 
 impl<T: Real> std::fmt::Display for Variable<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    let title = if self.node.cell.trainable { "Trainable" } else {
+    let title = if self.node.trainable { "Trainable" } else {
       if self.node.cell.grad.is_some() { "Computed" } else { "Tracked" }
     };
     write!(f, "{title} {}", self.tensor())

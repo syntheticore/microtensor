@@ -52,7 +52,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
   pub fn parameters(&self) -> Vec<Variable<T>> {
     self.history()
       .into_iter()
-      .filter(|node| node.cell.trainable )
+      .filter(|node| node.trainable )
       .map(|node| Variable { node } )
       .collect()
   }
@@ -67,6 +67,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         cell: dump.cell.clone(),
         op: dump.op,
         previous: dump.previous.iter().map(|id| nodes[id].clone() ).collect(),
+        trainable: dump.trainable,
       };
       nodes.insert(node.id, Rc::new(node));
     }
@@ -93,6 +94,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         cell,
         op,
         previous: node.previous.iter().map(|prev| prev.id ).collect(),
+        trainable: node.trainable,
       }
     }).collect();
 
@@ -118,6 +120,7 @@ struct NodeDump<T: Real + 'static> {
   cell: NodeCell<T>, //XXX don't save gradients
   op: Option<Op<T>>,
   previous: Vec<usize>,
+  trainable: bool,
 }
 
 #[derive(Serialize, Deserialize)]
