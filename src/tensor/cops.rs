@@ -35,67 +35,43 @@ impl<T: Numeric> Cops<T> for Tensor<T> {
   }
 }
 
-impl Cops<f32> for Tensor<f32> {
-  fn matmul(&self, rhs: &Self) -> Vec<f32> {
-    let rows_l = self.shape[-2];
-    let cols_l = self.shape[-1];
-    let cols_r = rhs.shape[-1];
+macro_rules! matmul {
+  ($T:ident, $method:ident) => {
+    impl Cops<$T> for Tensor<$T> {
+      fn matmul(&self, rhs: &Self) -> Vec<$T> {
+        let rows_l = self.shape[-2];
+        let cols_l = self.shape[-1];
+        let cols_r = rhs.shape[-1];
 
-    let mut data = vec![0.0; rows_l * cols_r];
+        let mut data = vec![0.0; rows_l * cols_r];
 
-    unsafe {
-      matrixmultiply::sgemm(
-        rows_l,
-        cols_l,
-        cols_r,
-        1.0,
-        self.raw_mut().as_mut_ptr().add(self.shape.offset),
-        self.shape.strides[0],
-        self.shape.strides[1],
-        rhs.raw_mut().as_mut_ptr().add(rhs.shape.offset),
-        rhs.shape.strides[0],
-        rhs.shape.strides[1],
-        0.0,
-        data.as_mut_ptr(),
-        cols_r as isize,
-        1,
-      );
-    };
+        unsafe {
+          matrixmultiply::$method(
+            rows_l,
+            cols_l,
+            cols_r,
+            1.0,
+            self.raw_mut().as_mut_ptr().add(self.shape.offset),
+            self.shape.strides[0],
+            self.shape.strides[1],
+            rhs.raw_mut().as_mut_ptr().add(rhs.shape.offset),
+            rhs.shape.strides[0],
+            rhs.shape.strides[1],
+            0.0,
+            data.as_mut_ptr(),
+            cols_r as isize,
+            1,
+          );
+        };
 
-    data
-  }
+        data
+      }
+    }
+  };
 }
 
-impl Cops<f64> for Tensor<f64> {
-  fn matmul(&self, rhs: &Self) -> Vec<f64> {
-    let rows_l = self.shape[-2];
-    let cols_l = self.shape[-1];
-    let cols_r = rhs.shape[-1];
-
-    let mut data = vec![0.0; rows_l * cols_r];
-
-    unsafe {
-      matrixmultiply::dgemm(
-        rows_l,
-        cols_l,
-        cols_r,
-        1.0,
-        self.raw_mut().as_mut_ptr().add(self.shape.offset),
-        self.shape.strides[0],
-        self.shape.strides[1],
-        rhs.raw_mut().as_mut_ptr().add(rhs.shape.offset),
-        rhs.shape.strides[0],
-        rhs.shape.strides[1],
-        0.0,
-        data.as_mut_ptr(),
-        cols_r as isize,
-        1,
-      );
-    };
-
-    data
-  }
-}
+matmul!(f32, sgemm);
+matmul!(f64, dgemm);
 
 
 #[cfg(test)]
