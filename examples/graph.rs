@@ -23,7 +23,7 @@ fn build_model(filename: &str) {
   let w = Tensor::randn(&[2, 16]).trained();
 
   // Do some computations
-  let y = &x1 % w;
+  let y = x1.mm(&w);
   let z = (&y * &x2).sum(0);
 
   // Pack the resulting graph into a Graph structure to make its inputs

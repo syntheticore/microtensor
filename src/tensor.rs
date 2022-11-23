@@ -151,13 +151,15 @@ impl<T: Inner> Tensor<T> {
     O: Inner,
     F: Fn((T, T)) -> O,
   {
-    let rhs = rhs.broadcast(self);
-    let data: Vec<O> = self.broadcast(&rhs).param_iter()
+    let rhs = rhs.broadcast(&self.shape);
+    let data: Vec<O> = self.broadcast(&rhs.shape).param_iter()
       .zip(rhs.param_iter())
       .map(cb)
       .collect();
     Tensor::new(&rhs.shape.dims, data)
   }
+
+  // zip_over(dim)
 
   pub fn vectorize<O,F>(&self, cb: F) -> Tensor<O>
   where
@@ -271,12 +273,6 @@ impl<T: Inner> Tensor<T> {
     Self { shape, data }
   }
 
-  pub fn transpose(&self, dim1: isize, dim2: isize) -> Self {
-    let shape = self.shape.transpose(dim1, dim2);
-    let data = self.data.clone();
-    Self { shape, data }
-  }
-
   pub fn transpose_vec(&self, extend_front: bool) -> Self {
     let mut shape = self.shape.clone();
     if shape.rank() == 1 {
@@ -288,24 +284,35 @@ impl<T: Inner> Tensor<T> {
   }
 
   pub fn equal(&self, rhs: &Self) -> Tensor<bool> {
+    //XXX make scalar rhs possible using Into<Tensor>
     self.zip(rhs, |(a, b)| a == b )
   }
 
-  pub fn chunks(&self, size: usize) -> Vec<Tensor<T>> {
-    let n = self.shape[0] / size;
-    let remainder = self.shape[0] % size;
+  pub fn split(&self, size: usize, dim: isize) -> Vec<Tensor<T>> {
+    let n = self.shape[dim] / size;
+    let remainder = self.shape[dim] % size;
+    let dim = negative_index(dim, self.rank(), false);
     let slices = (0..n as isize)
       .map(|i| {
         let j = i * size as isize;
-        self.range(&[j .. j + size as isize])
+        let mut ranges = vec![0..-1; dim + 1];
+        ranges[dim] = j .. j + size as isize;
+        self.range(&ranges)
       })
       .collect();
     if remainder == 0 {
       slices
     } else {
       let j = n as isize * size as isize;
-      [slices, vec![self.range(&[j .. j + remainder as isize])]].concat()
+      let mut ranges = vec![0..-1; dim + 1];
+      ranges[dim] = j .. j + remainder as isize;
+      [slices, vec![self.range(&ranges)]].concat()
     }
+  }
+
+  pub fn chunks(&self, n: usize, dim: isize) -> Vec<Tensor<T>> {
+    let size = self.shape[dim] / n;
+    self.split(size, dim)
   }
 }
 
@@ -350,6 +357,10 @@ impl<T: Numeric> Tensor<T> {
 
   pub fn div(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a / b )
+  }
+
+  pub fn rem(&self, rhs: &Self) -> Self {
+    self.zip(rhs, |(a, b)| a % b )
   }
 
   pub fn sum_over(&self, dim: isize) -> Self {
@@ -519,6 +530,19 @@ impl Tensor<bool> {
 
   pub fn any(&self) -> Option<bool> {
     self.reduce(|acc, a| acc || a ).and_then(|value| Some(value.item()) )
+  }
+
+  pub fn when<O: Inner>(&self, either: Tensor<O>, or: Tensor<O>) -> Tensor<O> {
+    let shape = self.shape.broadcast(&either.shape).broadcast(&or.shape);
+    let this = self.broadcast(&shape);
+    let either = either.broadcast(&shape);
+    let or = or.broadcast(&shape);
+    let data = either.param_iter()
+      .zip(or.param_iter())
+      .zip(this.param_iter())
+      .map(|((e, o), b)| if b { e } else { o } )
+      .collect();
+    Tensor::from_shape(shape, data)
   }
 }
 

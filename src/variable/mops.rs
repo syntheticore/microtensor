@@ -28,60 +28,76 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.node.cell.data.shape()
   }
 
-  fn broadcast(&self, rhs: &Self) -> Self {
-    self.operation_binary(Broadcast, rhs)
+  fn broadcast(&self, shape: &Shape) -> Self {
+    self.unary_op(Broadcast { dims: shape.dims.clone() })
   }
 
   fn reshape(&self, shape: &[usize]) -> Self {
-    self.operation_unary(Reshape { shape: shape.to_vec() })
+    self.unary_op(Reshape { shape: shape.to_vec() })
   }
 
   fn unsqueeze(&self, dim: isize) -> Self {
     let shape = self.shape().unsqueeze(dim);
     self.reshape(&shape.dims) //XXX real unsqueeze works without #contiguous
   }
+
+  fn transpose(&self, dim1: isize, dim2: isize) -> Self {
+    self.unary_op(Transpose { dim1, dim2 })
+  }
+
+  fn concat(&self, rhs: &Self, dim: isize) -> Self {
+    self.binary_op(Concat { dim }, rhs)
+  }
 }
 
 impl<T: Real> NumericOps<T> for Variable<T> {
   fn sum(&self, dim: isize) -> Variable<T> {
-    self.operation_unary(Sum { dim })
+    self.unary_op(Sum { dim })
   }
 
   fn mm(&self, rhs: &Self) -> Self {
-    self.operation_binary(MatMul, rhs)
+    self.binary_op(MatMul, rhs)
   }
 
   fn min(&self, dim: isize) -> Self {
-    self.operation_unary(Min { dim })
+    self.unary_op(Min { dim })
   }
 
   fn max(&self, dim: isize) -> Self {
-    self.operation_unary(Max { dim })
+    self.unary_op(Max { dim })
   }
 }
 
 impl<T: Real> SignedOps<T> for Variable<T> {
   fn abs(&self) -> Variable<T> {
-    self.operation_unary(Abs)
+    self.unary_op(Abs)
   }
 }
 
 impl<T: Real> RealOps<T> for Variable<T> {
   fn pow(&self, rhs: &Self) -> Variable<T> {
     let (lhs, rhs) = if self.shape().dims != rhs.shape().dims {
-      (self.broadcast(rhs), rhs.broadcast(self))
+      (self.broadcast(&rhs.shape()), rhs.broadcast(&self.shape()))
     } else {
       (self.clone(), rhs.clone())
     };
-    lhs.operation_binary(Pow, &rhs)
+    lhs.binary_op(Pow, &rhs)
+  }
+
+  fn sin(&self) -> Self {
+    self.unary_op(Sin)
+  }
+
+  fn cos(&self) -> Self {
+    self.unary_op(Cos)
   }
 
   fn relu(&self) -> Variable<T> {
-    self.operation_unary(ReLU)
+    self.unary_op(ReLU)
   }
 
   fn sigmoid(&self) -> Variable<T> {
-    self.operation_unary(Sigmoid)
+    self.unary_op(Sigmoid)
   }
 }
 
@@ -102,21 +118,21 @@ impl<T: Real> std::ops::Neg for Variable<T> {
 }
 
 macro_rules! add_operator {
-  ($op:ident, $operator:ident, $meth:ident, $symbol:tt, $broadcast:expr) => {
-    impl<T: Real> ops::$operator for &Variable<T> { // &tensor * &other
+  ($op:ident, $meth:ident, $symbol:tt) => {
+    impl<T: Real> ops::$op for &Variable<T> { // &tensor * &other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Self) -> Variable<T> {
-        let (lhs, rhs) = if $broadcast && self.shape().dims != rhs.shape().dims {
-          (self.broadcast(rhs), rhs.broadcast(self))
+        let (lhs, rhs) = if self.shape().dims != rhs.shape().dims {
+          (self.broadcast(&rhs.shape()), rhs.broadcast(&self.shape()))
         } else {
           (self.clone(), rhs.clone())
         };
-        lhs.operation_binary($op, &rhs)
+        lhs.binary_op($op, &rhs)
       }
     }
 
-    impl<T: Real> ops::$operator for Variable<T> { // tensor * other
+    impl<T: Real> ops::$op for Variable<T> { // tensor * other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Self) -> Variable<T> {
@@ -124,7 +140,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$operator<Variable<T>> for &Variable<T> { // &tensor * other
+    impl<T: Real> ops::$op<Variable<T>> for &Variable<T> { // &tensor * other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Variable<T>) -> Variable<T> {
@@ -132,7 +148,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$operator<&Variable<T>> for Variable<T> { // tensor * &other
+    impl<T: Real> ops::$op<&Variable<T>> for Variable<T> { // tensor * &other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: &Variable<T>) -> Variable<T> {
@@ -140,7 +156,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$operator<T> for &Variable<T> { // &tensor * T
+    impl<T: Real> ops::$op<T> for &Variable<T> { // &tensor * T
       type Output = Variable<T>;
 
       fn $meth(self, rhs: T) -> Variable<T> {
@@ -148,7 +164,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$operator<T> for Variable<T> { // tensor * T
+    impl<T: Real> ops::$op<T> for Variable<T> { // tensor * T
       type Output = Variable<T>;
 
       fn $meth(self, rhs: T) -> Variable<T> {
@@ -156,7 +172,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl ops::$operator<&Variable<f32>> for f32 { // T * &tensor
+    impl ops::$op<&Variable<f32>> for f32 { // T * &tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: &Variable<f32>) -> Variable<f32> {
@@ -164,7 +180,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl ops::$operator<Variable<f32>> for f32 { // T * tensor
+    impl ops::$op<Variable<f32>> for f32 { // T * tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: Variable<f32>) -> Variable<f32> {
@@ -174,20 +190,23 @@ macro_rules! add_operator {
   };
 }
 
-add_operator!(Add, Add, add, +, true);
-add_operator!(Sub, Sub, sub, -, true);
-add_operator!(Mul, Mul, mul, *, true);
-add_operator!(Div, Div, div, /, true);
-add_operator!(MatMul, Rem, rem, %, false);
+add_operator!(Add, add, +);
+add_operator!(Sub, sub, -);
+add_operator!(Mul, mul, *);
+add_operator!(Div, div, /);
+add_operator!(Rem, rem, %);
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Add;
 
 impl<T: Real> BinaryOp<T> for Add {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.add(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.add(rhs)
+  }
 
-  fn derivative(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.clone(),
     grad.clone(),
   )}
@@ -198,9 +217,12 @@ impl<T: Real> BinaryOp<T> for Add {
 pub struct Sub;
 
 impl<T: Real> BinaryOp<T> for Sub {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.sub(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.sub(rhs)
+  }
 
-  fn derivative(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.clone(),
     -grad
   )}
@@ -211,9 +233,12 @@ impl<T: Real> BinaryOp<T> for Sub {
 pub struct Mul;
 
 impl<T: Real> BinaryOp<T> for Mul {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.mul(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.mul(rhs)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.mul(rhs),
     grad.mul(lhs),
   )}
@@ -224,11 +249,30 @@ impl<T: Real> BinaryOp<T> for Mul {
 pub struct Div;
 
 impl<T: Real> BinaryOp<T> for Div {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.div(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.div(rhs)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.div(rhs),
     -grad.mul(lhs).div(rhs).div(rhs)
+  )}
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rem;
+
+impl<T: Real> BinaryOp<T> for Rem {
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.rem(rhs)
+  }
+
+  fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
+    grad.clone(),
+    -grad
   )}
 }
 
@@ -237,9 +281,12 @@ impl<T: Real> BinaryOp<T> for Div {
 pub struct MatMul;
 
 impl<T: Real> BinaryOp<T> for MatMul {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.mm(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.mm(rhs)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.mm(&rhs.transpose_vec(false)),
     lhs.transpose_vec(true).mm(grad),
   )}
@@ -247,28 +294,25 @@ impl<T: Real> BinaryOp<T> for MatMul {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Broadcast;
-
-impl<T: Real> BinaryOp<T> for Broadcast {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.broadcast(rhs)
-  }
-
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
-    unbroadcast(lhs, rhs, grad),
-    Tensor::zeros(&rhs.shape().dims),
-  )}
+pub struct Broadcast {
+  dims: Vec<usize>,
 }
 
-fn unbroadcast<T: Real>(tensor: &Tensor<T>, other: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-  let shape = tensor.shape().broadcast(&other.shape());
-  let mut grad = grad.clone();
-  for (d, &stride) in shape.strides.iter().enumerate().rev() {
-    if stride == 0 {
-      grad = grad.sum_over(d as isize);
-    }
+impl<T: Real> UnaryOp<T> for Broadcast {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.broadcast(&Shape::new(&self.dims))
   }
-  grad
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let shape = lhs.shape().broadcast(&Shape::new(&self.dims));
+    let mut grad = grad.clone();
+    for (d, &stride) in shape.strides.iter().enumerate().rev() {
+      if stride == 0 {
+        grad = grad.sum_over(d as isize);
+      }
+    }
+    grad
+  }
 }
 
 
@@ -278,12 +322,56 @@ pub struct Reshape {
 }
 
 impl<T: Real> UnaryOp<T> for Reshape {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
     lhs.reshape(&self.shape)
   }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad.reshape(&lhs.shape().dims)
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transpose {
+  dim1: isize,
+  dim2: isize,
+}
+
+impl<T: Real> UnaryOp<T> for Transpose {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.transpose(self.dim1, self.dim2)
+  }
+
+  fn derive(&self, _lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad.transpose(self.dim1, self.dim2)
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Concat {
+  dim: isize,
+}
+
+impl<T: Real> BinaryOp<T> for Concat {
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.concat(rhs, self.dim)
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {
+    let size_l = lhs.shape()[self.dim];
+    let size_r = rhs.shape()[self.dim];
+    let dim = negative_index(self.dim, grad.rank(), false);
+
+    let mut ranges_l = vec![0..-1; dim + 1];
+    let mut ranges_r = ranges_l.clone();
+    let size_l = size_l as isize;
+    ranges_l[dim] = 0..size_l;
+    ranges_r[dim] = size_l..size_l + size_r as isize;
+
+    (grad.range(&ranges_l), grad.range(&ranges_r))
   }
 }
 
@@ -292,12 +380,43 @@ impl<T: Real> UnaryOp<T> for Reshape {
 pub struct Pow;
 
 impl<T: Real> BinaryOp<T> for Pow {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> { lhs.pow(rhs) }
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.pow(rhs)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {(
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
+  {(
     grad.mul(rhs).mul(&lhs.pow(&rhs.sub(&Tensor::ones(&rhs.shape().dims)))),
     grad.mul(&lhs.pow(rhs)).mul(&lhs.log()),
   )}
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sin;
+
+impl<T: Real> UnaryOp<T> for Sin {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.sin()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad * lhs.cos()
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Cos;
+
+impl<T: Real> UnaryOp<T> for Cos {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.cos()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad * -lhs.sin()
+  }
 }
 
 
@@ -307,11 +426,11 @@ pub struct Sum {
 }
 
 impl<T: Real> UnaryOp<T> for Sum {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
     lhs.sum(self.dim)
   }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     uncollapse(self.dim, lhs, grad)
   }
 }
@@ -332,9 +451,11 @@ fn uncollapse<T: Real>(dim: isize, tensor: &Tensor<T>, grad: &Tensor<T>) -> Tens
 pub struct Abs;
 
 impl<T: Real> UnaryOp<T> for Abs {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> { lhs.abs() }
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.abs()
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * lhs.signum()
   }
 }
@@ -346,9 +467,11 @@ pub struct Min {
 }
 
 impl<T: Real> UnaryOp<T> for Min {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> { lhs.min(self.dim) }
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.min(self.dim)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     // grad * lhs.min_index(self.dim).one_hot(lhs.shape()[self.dim])
     uncollapse(self.dim, lhs, grad) //XXX
   }
@@ -361,9 +484,11 @@ pub struct Max {
 }
 
 impl<T: Real> UnaryOp<T> for Max {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> { lhs.max(self.dim) }
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.max(self.dim)
+  }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     uncollapse(self.dim, lhs, grad) //XXX
   }
 }
@@ -373,11 +498,11 @@ impl<T: Real> UnaryOp<T> for Max {
 pub struct ReLU;
 
 impl<T: Real> UnaryOp<T> for ReLU {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
     lhs.relu()
   }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * lhs.gt(&Tensor::scalar(T::zero())).numeric()
   }
 }
@@ -387,11 +512,11 @@ impl<T: Real> UnaryOp<T> for ReLU {
 pub struct Sigmoid;
 
 impl<T: Real> UnaryOp<T> for Sigmoid {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T> {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
     lhs.sigmoid()
   }
 
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     let result = lhs.sigmoid();
     grad * (&result * (Tensor::scalar(T::one()) - &result))
   }

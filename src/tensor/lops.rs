@@ -1,4 +1,5 @@
 use crate::{
+  internal::*,
   shape::Shape,
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
@@ -15,9 +16,9 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     &self.shape
   }
 
-  fn broadcast(&self, rhs: &Self) -> Self {
+  fn broadcast(&self, shape: &Shape) -> Self {
     Self {
-      shape: self.shape.broadcast(&rhs.shape),
+      shape: self.shape.broadcast(shape),
       data: self.data.clone(),
     }
   }
@@ -30,6 +31,34 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     let shape = self.shape.unsqueeze(dim);
     let data = self.data.clone();
     Self { shape, data }
+  }
+
+  fn transpose(&self, dim1: isize, dim2: isize) -> Self {
+    let shape = self.shape.transpose(dim1, dim2);
+    let data = self.data.clone();
+    Self { shape, data }
+  }
+
+  fn concat(&self, rhs: &Self, dim: isize) -> Self {
+    let dim = negative_index(dim, self.rank(), false);
+    let data = if dim == 0 {
+      [self.detach().into_raw(), rhs.detach().into_raw()].concat()
+    } else {
+      let dim = dim as isize - 1;
+      self.iter(dim)
+        .zip(rhs.iter(dim))
+        .flat_map(|(a, b)| vec![a.detach().into_raw(), b.detach().into_raw()] )
+        .collect::<Vec<_>>()
+        .concat()
+    };
+    let mut dims_l = self.shape.dims.clone();
+    dims_l[dim] += rhs.shape.dims[dim];
+    let mut dims_r = rhs.shape.dims.clone();
+    dims_r[dim] += self.shape.dims[dim];
+    assert_eq!(dims_l, dims_r,
+      "Cannot concat {} & {} tensors. Shapes may only differ in dim {}",
+      self.shape, rhs.shape, dim);
+    Self::new(&dims_l, data)
   }
 }
 
@@ -98,6 +127,14 @@ impl<T: Real> RealOps<T> for Tensor<T> {
     self.zip(rhs, |(a, b)| a.powf(b) )
   }
 
+  fn sin(&self) -> Self {
+    self.vectorize(|a| a.sin() )
+  }
+
+  fn cos(&self) -> Self {
+    self.vectorize(|a| a.cos() )
+  }
+
   fn relu(&self) -> Self {
     self.vectorize(|a| a.max(T::zero()) )
   }
@@ -124,11 +161,11 @@ impl<T: Signed> std::ops::Neg for Tensor<T> {
 }
 
 macro_rules! add_operator {
-  ($trait:ident, $trait_meth:ident, $meth:ident, $symbol:tt) => {
+  ($trait:ident, $meth:ident, $symbol:tt) => {
     impl<T: Numeric> std::ops::$trait for &Tensor<T> { // &self * &other
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: Self) -> Tensor<T> {
+      fn $meth(self, rhs: Self) -> Tensor<T> {
         self.$meth(rhs)
       }
     }
@@ -136,7 +173,7 @@ macro_rules! add_operator {
     impl<T: Numeric> std::ops::$trait for Tensor<T> { // tensor * other
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: Self) -> Tensor<T> {
+      fn $meth(self, rhs: Self) -> Tensor<T> {
         (&self).$meth(&rhs)
       }
     }
@@ -144,7 +181,7 @@ macro_rules! add_operator {
     impl<T: Numeric> std::ops::$trait<Tensor<T>> for &Tensor<T> { // &tensor * other
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: Tensor<T>) -> Tensor<T> {
+      fn $meth(self, rhs: Tensor<T>) -> Tensor<T> {
         (self).$meth(&rhs)
       }
     }
@@ -152,7 +189,7 @@ macro_rules! add_operator {
     impl<T: Numeric> std::ops::$trait<&Tensor<T>> for Tensor<T> { // tensor * &other
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: &Tensor<T>) -> Tensor<T> {
+      fn $meth(self, rhs: &Tensor<T>) -> Tensor<T> {
         (&self).$meth(rhs)
       }
     }
@@ -160,7 +197,7 @@ macro_rules! add_operator {
     impl<T: Numeric> std::ops::$trait<T> for &Tensor<T> { // &tensor * T
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: T) -> Tensor<T> {
+      fn $meth(self, rhs: T) -> Tensor<T> {
         (self).$meth(&Tensor::scalar(rhs))
       }
     }
@@ -168,7 +205,7 @@ macro_rules! add_operator {
     impl<T: Numeric> std::ops::$trait<T> for Tensor<T> { // tensor * T
       type Output = Tensor<T>;
 
-      fn $trait_meth(self, rhs: T) -> Tensor<T> {
+      fn $meth(self, rhs: T) -> Tensor<T> {
         (&self).$meth(&Tensor::scalar(rhs))
       }
     }
@@ -176,7 +213,7 @@ macro_rules! add_operator {
     impl std::ops::$trait<&Tensor<f32>> for f32 { // f32 * &tensor
       type Output = Tensor<f32>;
 
-      fn $trait_meth(self, tensor: &Tensor<f32>) -> Tensor<f32> {
+      fn $meth(self, tensor: &Tensor<f32>) -> Tensor<f32> {
         Tensor::scalar(self) $symbol tensor
       }
     }
@@ -184,18 +221,18 @@ macro_rules! add_operator {
     impl std::ops::$trait<Tensor<f32>> for f32 { // f32 * tensor
       type Output = Tensor<f32>;
 
-      fn $trait_meth(self, tensor: Tensor<f32>) -> Tensor<f32> {
+      fn $meth(self, tensor: Tensor<f32>) -> Tensor<f32> {
         Tensor::scalar(self) $symbol &tensor
       }
     }
   };
 }
 
-add_operator!(Add, add, add, +);
-add_operator!(Sub, sub, sub, -);
-add_operator!(Mul, mul, mul, *);
-add_operator!(Div, div, div, /);
-add_operator!(Rem, rem, mm, %);
+add_operator!(Add, add, +);
+add_operator!(Sub, sub, -);
+add_operator!(Mul, mul, *);
+add_operator!(Div, div, /);
+add_operator!(Rem, rem, %);
 
 
 #[cfg(test)]
@@ -207,5 +244,24 @@ mod tests {
     let a = Tensor::new(&[3,2], vec![1, 2, 3, 4, 5, 6]);
     assert_eq!(a.sum(0), Tensor::new(&[], vec![21]));
     assert_eq!(a.sum(-1), Tensor::new(&[3], vec![3, 7, 11]));
+  }
+
+  #[test]
+  fn concat() {
+    let a = Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]);
+    let b = Tensor::new(&[2,3], vec![7, 8, 9, 10, 11, 12]);
+    assert_eq!(a.concat(&b, 1), Tensor::new(&[2,6], vec![1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12]));
+
+    let b = Tensor::new(&[2,4], vec![7, 8, 9, 10, 11, 12, 13, 14]);
+    assert_eq!(a.concat(&b, 1), Tensor::new(&[2,7], vec![1, 2, 3, 7, 8, 9, 10, 4, 5, 6, 11, 12, 13, 14]));
+  }
+
+  #[test]
+  fn split() {
+    let a = Tensor::new(&[2,6], vec![1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12]);
+    assert_eq!(a.split(3, 1), vec![
+      Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]),
+      Tensor::new(&[2,3], vec![7, 8, 9, 10, 11, 12]),
+    ]);
   }
 }

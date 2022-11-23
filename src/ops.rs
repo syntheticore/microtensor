@@ -1,6 +1,9 @@
+use num_traits::NumOps;
+
 use crate::internal::*;
 use crate::Shape;
 use crate::scalar::{ Inner, Numeric, Signed, Real };
+
 
 /// Low level compute operations.
 
@@ -15,16 +18,18 @@ pub trait Cops<I: Numeric> {
 pub trait BaseOps<I: Inner>: Clone {
   fn scalar(item: I) -> Self;
   fn shape(&self) -> &Shape;
-  fn broadcast(&self, rhs: &Self) -> Self;
-  fn reshape(&self, shape: &[usize]) -> Self;
+  fn broadcast(&self, shape: &Shape) -> Self;
+  fn reshape(&self, dims: &[usize]) -> Self;
   fn unsqueeze(&self, dim: isize) -> Self;
+  fn transpose(&self, dim1: isize, dim2: isize) -> Self;
+  fn concat(&self, rhs: &Self, dim: isize) -> Self;
 }
 
 
 /// Differentiable mid-level operations that are also implemented
 /// for non-differentiable [Numeric] inner types.
 
-pub trait NumericOps<I: Numeric>: num_traits::NumOps + num_traits::NumOps<I, Self> + Sized {
+pub trait NumericOps<I: Numeric>: NumOps + NumOps<I, Self> + Sized {
   fn sum(&self, dim: isize) -> Self;
   // sum_over or generic form of sum etc., like sum(&[1,2])
   fn mm(&self, rhs: &Self) -> Self;
@@ -45,6 +50,8 @@ pub trait SignedOps<I: Signed>: std::ops::Neg {
 
 pub trait RealOps<I: Real>: std::ops::Neg {
   fn pow(&self, rhs: &Self) -> Self;
+  fn sin(&self) -> Self;
+  fn cos(&self) -> Self;
   fn relu(&self) -> Self;
   fn sigmoid(&self) -> Self;
 }
@@ -57,7 +64,7 @@ pub trait RealOps<I: Real>: std::ops::Neg {
 pub trait Hops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I>
 where
   I: Real,
-  for<'a> &'a Self: num_traits::NumOps<&'a Self, Self> + num_traits::NumOps<I, Self>,
+  for<'a> &'a Self: NumOps<&'a Self, Self> + NumOps<I, Self>,
 {
   fn powf(&self, exp: I) -> Self {
     self.pow(&Self::scalar(exp))

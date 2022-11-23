@@ -26,16 +26,16 @@ pub fn make_id() -> usize {
 /// Unary computational operation that can also compute its derivative.
 
 pub trait UnaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
-  fn execute(&self, lhs: &Tensor<T>) -> Tensor<T>;
-  fn derivative(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T>;
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T>;
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T>;
 }
 
 
 /// Binary computational operation that can also compute its derivative.
 
 pub trait BinaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
-  fn execute(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T>;
-  fn derivative(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>);
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T>;
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>);
 }
 
 
@@ -84,10 +84,10 @@ impl<T: Real> Node<T> {
     if let Some(op) = &self.op {
       let lhs = &self.previous[0].cell.data;
       let value = match op {
-        Op::Unary(op) => op.execute(lhs),
+        Op::Unary(op) => op.run(lhs),
         Op::Binary(op) => {
           let rhs = &self.previous[1].cell.data;
-          op.execute(lhs, rhs)
+          op.run(lhs, rhs)
         },
       };
       self.cell.data.feed(&value);
@@ -98,10 +98,10 @@ impl<T: Real> Node<T> {
     if let (Some(op), Some(grad)) = (&self.op, &self.cell.grad) {
       let lhs = &self.previous[0];
       let changes = match op {
-        Op::Unary(op) => vec![op.derivative(&lhs.cell.data, grad)],
+        Op::Unary(op) => vec![op.derive(&lhs.cell.data, grad)],
         Op::Binary(op) => {
           let rhs = &self.previous[1];
-          let changes = op.derivative(&lhs.cell.data, &rhs.cell.data, grad);
+          let changes = op.derive(&lhs.cell.data, &rhs.cell.data, grad);
           vec![changes.0, changes.1]
         },
       };
@@ -205,8 +205,8 @@ impl<T: Real + 'static> Variable<T> {
     self.node.grad()
   }
 
-  pub fn operation_unary(&self, op: impl UnaryOp<T> + 'static) -> Self {
-    let data = op.execute(&self.node.cell.data);
+  pub fn unary_op(&self, op: impl UnaryOp<T> + 'static) -> Self {
+    let data = op.run(&self.node.cell.data);
     Self::operation(
       Op::Unary(serde_traitobject::Box::new(op)),
       data,
@@ -214,8 +214,8 @@ impl<T: Real + 'static> Variable<T> {
       vec![self.node.clone()])
   }
 
-  pub fn operation_binary(&self, op: impl BinaryOp<T> + 'static, rhs: &Self) -> Self {
-    let data = op.execute(&self.node.cell.data, &rhs.node.cell.data);
+  pub fn binary_op(&self, op: impl BinaryOp<T> + 'static, rhs: &Self) -> Self {
+    let data = op.run(&self.node.cell.data, &rhs.node.cell.data);
     Self::operation(
       Op::Binary(serde_traitobject::Box::new(op)),
       data,

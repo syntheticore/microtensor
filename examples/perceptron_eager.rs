@@ -29,7 +29,7 @@ impl DenseLayer {
   }
 
   pub fn run(&self, input: &Variable<f32>) -> Variable<f32> {
-    input % &self.weights + &self.bias
+    input.mm(&self.weights) + &self.bias
   }
 }
 

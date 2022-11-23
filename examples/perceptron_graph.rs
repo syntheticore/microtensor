@@ -18,7 +18,7 @@ use microtensor::{prelude::*, Tensor, Variable};
 fn dense_layer(input: &Variable<f32>, size: usize) -> Variable<f32> {
   let weights = (Tensor::randn(&[input.shape()[-1], size]) / size as f32).trained();
   let bias = Tensor::zeros(&[size]).trained();
-  input % weights + bias
+  input.mm(&weights) + bias
 }
 
 fn perceptron(input: &Variable<f32>) -> Variable<f32> {
