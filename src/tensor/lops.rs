@@ -72,8 +72,10 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let mut rhs = rhs.clone();
 
     // Unsqueeze vector to match matrix
+    //XXX allow batched matrix vector multiply
     let pad_l = lhs.rank() == 1;
     let pad_r = rhs.rank() == 1;
+    assert!(!(pad_l && pad_r), "Use Tensor::dot to multiply two vectors");
     if pad_l {
       lhs = lhs.unsqueeze(0);
     }
@@ -82,7 +84,20 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
       rhs = rhs.unsqueeze(0);
     }
 
-    // Form result shape
+    // Extend with batch dimension
+    let no_batch = lhs.rank() == 2 && rhs.rank() == 2;
+    lhs = lhs.extend(3);
+    rhs = rhs.extend(3);
+
+    // Batch size must be broadcastable
+    //XXX allow arbitrary shape before matrix dims
+    assert!(lhs.shape.dims[0] == rhs.shape.dims[0] ||
+      lhs.shape.dims[0] == 1 || rhs.shape.dims[0] == 1,
+      "Could not broadcast batch sizes {} & {}", lhs.shape.dims[0], rhs.shape.dims[0]);
+
+    let batch_size = lhs.shape.dims[0].max(rhs.shape.dims[0]);
+
+    // Squeeze back result
     let rows_l = lhs.shape[-2];
     let cols_r = rhs.shape[-1];
     let dims = if pad_l {
@@ -94,7 +109,13 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
       vec![rows_l, cols_r]
     };
 
-    let data = lhs.matmul(&rhs);
+    let dims_b = if no_batch { vec![] } else { vec![batch_size] };
+    let dims = [dims_b, dims].concat();
+
+    let data = (0..batch_size).flat_map(|b|
+      lhs.at(&[b.min(lhs.shape.dims[0] - 1)]).matmul(
+      &rhs.at(&[b.min(rhs.shape.dims[0] - 1)]))
+    ).collect();
 
     Self::new(&dims, data)
   }

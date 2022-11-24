@@ -13,12 +13,6 @@ use crate::{
 };
 
 
-impl<T: Real> Variable<T> {
-  pub fn squeeze_only(&self, dim: isize) -> Self {
-    Self::from_tensor(self.tensor().squeeze_only(dim), false)
-  }
-}
-
 impl<T: Real> BaseOps<T> for Variable<T> {
   fn scalar(item: T) -> Self {
     Self::from_tensor(Tensor::scalar(item), false)
@@ -32,8 +26,8 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.unary_op(Broadcast { dims: shape.dims.clone() })
   }
 
-  fn reshape(&self, shape: &[usize]) -> Self {
-    self.unary_op(Reshape { shape: shape.to_vec() })
+  fn reshape(&self, dims: &[usize]) -> Self {
+    self.unary_op(Reshape { dims: dims.to_vec() })
   }
 
   fn unsqueeze(&self, dim: isize) -> Self {
@@ -202,7 +196,7 @@ pub struct Add;
 
 impl<T: Real> BinaryOp<T> for Add {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.add(rhs)
+    lhs + rhs
   }
 
   fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
@@ -218,7 +212,7 @@ pub struct Sub;
 
 impl<T: Real> BinaryOp<T> for Sub {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.sub(rhs)
+    lhs - rhs
   }
 
   fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
@@ -234,13 +228,13 @@ pub struct Mul;
 
 impl<T: Real> BinaryOp<T> for Mul {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.mul(rhs)
+    lhs * rhs
   }
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
   {(
-    grad.mul(rhs),
-    grad.mul(lhs),
+    grad * rhs,
+    grad * lhs,
   )}
 }
 
@@ -250,13 +244,13 @@ pub struct Div;
 
 impl<T: Real> BinaryOp<T> for Div {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.div(rhs)
+    lhs / rhs
   }
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
   {(
-    grad.div(rhs),
-    -grad.mul(lhs).div(rhs).div(rhs)
+    grad / rhs,
+    -grad * lhs / rhs / rhs
   )}
 }
 
@@ -266,7 +260,7 @@ pub struct Rem;
 
 impl<T: Real> BinaryOp<T> for Rem {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.rem(rhs)
+    lhs % rhs
   }
 
   fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
@@ -286,10 +280,24 @@ impl<T: Real> BinaryOp<T> for MatMul {
   }
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
-  {(
-    grad.mm(&rhs.transpose_vec(false)),
-    lhs.transpose_vec(true).mm(grad),
-  )}
+  {
+    let mut grad_l = grad.mm(&rhs.transpose_vec(false));
+    let mut grad_r = lhs.transpose_vec(true).mm(grad);
+
+    let rank_l = lhs.rank();
+    let rank_r = rhs.rank();
+    let rank = rank_l.max(rank_r);
+
+    // Sum over batch dimension if tensor was broadcasted for bmm
+    if rank == 3 {
+      if rank_l < rank_r {
+        grad_l = grad_l.sum_over(0).squeeze_only(0)
+      } else if rank_r < rank_l {
+        grad_r = grad_r.sum_over(0).squeeze_only(0)
+      }
+    }
+    (grad_l, grad_r)
+  }
 }
 
 
@@ -318,12 +326,12 @@ impl<T: Real> UnaryOp<T> for Broadcast {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reshape {
-  shape: Vec<usize>,
+  dims: Vec<usize>,
 }
 
 impl<T: Real> UnaryOp<T> for Reshape {
   fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.reshape(&self.shape)
+    lhs.reshape(&self.dims)
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
@@ -386,8 +394,8 @@ impl<T: Real> BinaryOp<T> for Pow {
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
   {(
-    grad.mul(rhs).mul(&lhs.pow(&rhs.sub(&Tensor::ones(&rhs.shape().dims)))),
-    grad.mul(&lhs.pow(rhs)).mul(&lhs.log()),
+    grad * rhs * lhs.pow(&(rhs - T::one())),
+    grad * lhs.pow(rhs) * lhs.log(),
   )}
 }
 

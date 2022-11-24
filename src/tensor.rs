@@ -273,6 +273,12 @@ impl<T: Inner> Tensor<T> {
     Self { shape, data }
   }
 
+  pub fn extend(&self, size: usize) -> Self {
+    let shape = self.shape.extend(size);
+    let data = self.data.clone();
+    Self { shape, data }
+  }
+
   pub fn transpose_vec(&self, extend_front: bool) -> Self {
     let mut shape = self.shape.clone();
     if shape.rank() == 1 {
@@ -667,15 +673,9 @@ mod tests {
 
     let y = Tensor::new(&[  2,3], vec![1, 2, 3, 4, 5, 6]);
     assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 4, 6, 8, 10, 12]));
-  }
 
-  #[test]
-  #[ignore]
-  fn pytorch_broadcast() {
-    let x = Tensor::new(&[1,2,3], vec![1, 2, 3, 4, 5, 6]);
-
-    let y = Tensor::new(&[  2,1], vec![1, 2, 3, 4, 5, 6]);
-    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 3, 4, 5, 6, 7]));
+    let y = Tensor::new(&[  2,1], vec![1, 2]);
+    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 3, 4, 6, 7, 8]));
   }
 
   #[test]

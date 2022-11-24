@@ -5,7 +5,7 @@ use crate::Shape;
 use crate::scalar::{ Inner, Numeric, Signed, Real };
 
 
-/// Low level compute operations.
+/// Low-level compute operations.
 
 pub trait Cops<I: Numeric> {
   fn matmul(&self, rhs: &Self) -> Vec<I>;
