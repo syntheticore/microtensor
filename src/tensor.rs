@@ -88,7 +88,7 @@ impl<T: Inner> Tensor<T> {
     Self::new(&dims, data)
   }
 
-  pub fn stack(rows: &[Tensor<T>]) -> Self {
+  pub fn stack(rows: &[Tensor<T>]) -> Self { //XXX write as Hop over concat
     let mut dims = rows[0].shape.dims.clone();
     dims[0] = rows.iter().map(|row| row.shape[0] ).sum();
     let data = rows.iter()
@@ -471,10 +471,6 @@ impl<T: Real> Tensor<T> {
   pub fn tracked(&self) -> Variable<T> {
     Variable::from(self)
   }
-
-  pub fn log(&self) -> Self {
-    self.vectorize(|a| a.ln() )
-  }
 }
 
 impl<T: Integer> Tensor<T> {
@@ -549,6 +545,14 @@ impl Tensor<bool> {
       .map(|((e, o), b)| if b { e } else { o } )
       .collect();
     Tensor::from_shape(shape, data)
+  }
+}
+
+impl std::ops::Not for Tensor<bool> {
+  type Output = Self;
+
+  fn not(self) -> Self::Output {
+    self.vectorize(|a| !a )
   }
 }
 

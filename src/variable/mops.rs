@@ -86,6 +86,10 @@ impl<T: Real> RealOps<T> for Variable<T> {
     self.unary_op(Cos)
   }
 
+  fn log(&self) -> Self {
+    self.unary_op(Log)
+  }
+
   fn relu(&self) -> Variable<T> {
     self.unary_op(ReLU)
   }
@@ -424,6 +428,20 @@ impl<T: Real> UnaryOp<T> for Cos {
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * -lhs.sin()
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Log;
+
+impl<T: Real> UnaryOp<T> for Log {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.log()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad / lhs
   }
 }
 

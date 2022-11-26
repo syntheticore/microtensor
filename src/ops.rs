@@ -35,6 +35,7 @@ pub trait NumericOps<I: Numeric>: NumOps + NumOps<I, Self> + Sized {
   fn mm(&self, rhs: &Self) -> Self;
   fn min(&self, dim: isize) -> Self;
   fn max(&self, dim: isize) -> Self;
+  fn max_over(&self, _dim: isize) -> Self { todo!() }
 }
 
 
@@ -52,6 +53,7 @@ pub trait RealOps<I: Real>: std::ops::Neg {
   fn pow(&self, rhs: &Self) -> Self;
   fn sin(&self) -> Self;
   fn cos(&self) -> Self;
+  fn log(&self) -> Self;
   fn relu(&self) -> Self;
   fn sigmoid(&self) -> Self;
 }
@@ -87,6 +89,10 @@ where
     self.sqr().sum(dim).sqrt()
   }
 
+  fn dot(&self, rhs: &Self, dim: isize) -> Self {
+    (self * rhs).sum(dim)
+  }
+
   fn mean(&self, dim: isize) -> Self {
     let udim = negative_index(dim, self.shape().rank(), false);
     let n: usize = self.shape().dims[udim..].iter().product();
@@ -105,8 +111,8 @@ where
     &exp / &exp.sum(dim).unsqueeze(-1)
   }
 
-  fn dot(&self, rhs: &Self, dim: isize) -> Self {
-    (self * rhs).sum(dim)
+  fn max_with(&self, rhs: &Self) -> Self {
+    self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0)
   }
 }
 

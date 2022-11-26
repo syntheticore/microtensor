@@ -156,6 +156,10 @@ impl<T: Real> RealOps<T> for Tensor<T> {
     self.vectorize(|a| a.cos() )
   }
 
+  fn log(&self) -> Self {
+    self.vectorize(|a| a.ln() )
+  }
+
   fn relu(&self) -> Self {
     self.vectorize(|a| a.max(T::zero()) )
   }
