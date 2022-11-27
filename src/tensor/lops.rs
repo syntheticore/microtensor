@@ -1,9 +1,11 @@
+use std::ops::Range;
+
 use crate::{
   internal::*,
   shape::Shape,
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
-  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps },
+  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
 };
 
 
@@ -16,6 +18,12 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     &self.shape
   }
 
+  fn range(&self, ranges: &[Range<isize>]) -> Self {
+    let shape = self.shape.range(ranges);
+    let data = self.data.clone();
+    Self { shape, data }
+  }
+
   fn broadcast(&self, shape: &Shape) -> Self {
     Self {
       shape: self.shape.broadcast(shape),
@@ -25,6 +33,12 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
 
   fn reshape(&self, shape: &[usize]) -> Self {
     self.contiguous().view(shape)
+  }
+
+  fn squeeze(&self, squeezed: &[isize]) -> Self {
+    let shape = self.shape.squeeze(squeezed);
+    let data = self.data.clone();
+    Self { shape, data }
   }
 
   fn unsqueeze(&self, dim: isize) -> Self {

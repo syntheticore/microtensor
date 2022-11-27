@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use num_traits::NumOps;
 
 use crate::internal::*;
@@ -18,8 +20,10 @@ pub trait Cops<I: Numeric> {
 pub trait BaseOps<I: Inner>: Clone {
   fn scalar(item: I) -> Self;
   fn shape(&self) -> &Shape;
+  fn range(&self, ranges: &[Range<isize>]) -> Self;
   fn broadcast(&self, shape: &Shape) -> Self;
   fn reshape(&self, dims: &[usize]) -> Self;
+  fn squeeze(&self, squeezed: &[isize]) -> Self;
   fn unsqueeze(&self, dim: isize) -> Self;
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
   fn concat(&self, rhs: &Self, dim: isize) -> Self;
@@ -63,7 +67,60 @@ pub trait RealOps<I: Real>: std::ops::Neg {
 /// Mops and other Hops. As a result, these are all
 /// differentiable when called on a [Variable](crate::Variable).
 
-pub trait Hops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I>
+pub trait BaseHops<I: Inner>: BaseOps<I> {
+  fn at(&self, indices: &[usize]) -> Self {
+    let ranges: Vec<_> = indices.iter()
+      .map(|&i| i as isize .. i as isize + 1 )
+      .collect();
+    self.range(&ranges).squeeze_first(indices.len())
+  }
+
+  fn squeeze_only(&self, dim: isize) -> Self {
+    self.squeeze(&[dim])
+  }
+
+  fn squeeze_but(&self, dim: isize) -> Self {
+    let rank = self.shape().rank();
+    let dim = negative_index(dim, rank, false) as isize;
+    let dims: Vec<_> = (0..rank as isize)
+      .filter(|&d| d != dim )
+      .collect();
+    self.squeeze(&dims)
+  }
+
+  fn squeeze_first(&self, n: usize) -> Self {
+    let dims: Vec<_> = (0..n as isize).collect();
+    self.squeeze(&dims)
+  }
+
+  fn squeeze_all(&self) -> Self {
+    self.squeeze_first(self.shape().rank())
+  }
+
+  fn stack(rows: &[Self], dim: isize) -> Self {
+    assert!(rows.len() >= 1);
+    let mut out = rows[0].clone();
+    for row in &rows[1..] {
+      out = out.concat(row, dim);
+    }
+    out
+  }
+
+  fn rows(rows: &[Self]) -> Self {
+    assert!(rows.len() >= 1);
+    let rows: Vec<_> = rows.iter()
+      .map(|row| row.unsqueeze(0) )
+      .collect();
+    Self::stack(&rows, 0)
+  }
+}
+
+
+/// High-level operations, implemented exclusively on top of
+/// Mops and other Hops. As a result, these are all
+/// differentiable when called on a [Variable](crate::Variable).
+
+pub trait RealHops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I>
 where
   I: Real,
   for<'a> &'a Self: NumOps<&'a Self, Self> + NumOps<I, Self>,
@@ -135,5 +192,14 @@ mod tests {
     for row in a.iter(0) {
       assert_eq!(row.sum(0).item(), 1.0);
     }
+  }
+
+  #[test]
+  fn stack() {
+    let a = Tensor::stack(&[
+      Tensor::arrange(&[1,2], 1, 1),
+      Tensor::arrange(&[3,2], 3, 1),
+    ], 0);
+    assert_eq!(a, Tensor::new(&[4,2], vec![1, 2, 3, 4, 5, 6, 7, 8]));
   }
 }

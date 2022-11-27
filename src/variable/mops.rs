@@ -1,4 +1,3 @@
-use std::ops;
 use std::fmt::Debug;
 
 use serde::{Serialize, Deserialize};
@@ -9,7 +8,7 @@ use crate::{
   tensor::Tensor,
   variable::{ Variable, BinaryOp, UnaryOp },
   scalar::Real,
-  ops::{ BaseOps, NumericOps, SignedOps, RealOps },
+  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
 };
 
 
@@ -22,12 +21,21 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.node.cell.data.shape()
   }
 
+  fn range(&self, ranges: &[std::ops::Range<isize>]) -> Self {
+    self.unary_op(Range { ranges: ranges.to_vec() })
+  }
+
   fn broadcast(&self, shape: &Shape) -> Self {
     self.unary_op(Broadcast { dims: shape.dims.clone() })
   }
 
   fn reshape(&self, dims: &[usize]) -> Self {
     self.unary_op(Reshape { dims: dims.to_vec() })
+  }
+
+  fn squeeze(&self, squeezed: &[isize]) -> Self {
+    let shape = self.shape().squeeze(squeezed);
+    self.reshape(&shape.dims)
   }
 
   fn unsqueeze(&self, dim: isize) -> Self {
@@ -117,7 +125,7 @@ impl<T: Real> std::ops::Neg for Variable<T> {
 
 macro_rules! add_operator {
   ($op:ident, $meth:ident, $symbol:tt) => {
-    impl<T: Real> ops::$op for &Variable<T> { // &tensor * &other
+    impl<T: Real> std::ops::$op for &Variable<T> { // &tensor * &other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Self) -> Variable<T> {
@@ -130,7 +138,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$op for Variable<T> { // tensor * other
+    impl<T: Real> std::ops::$op for Variable<T> { // tensor * other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Self) -> Variable<T> {
@@ -138,7 +146,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$op<Variable<T>> for &Variable<T> { // &tensor * other
+    impl<T: Real> std::ops::$op<Variable<T>> for &Variable<T> { // &tensor * other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: Variable<T>) -> Variable<T> {
@@ -146,7 +154,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$op<&Variable<T>> for Variable<T> { // tensor * &other
+    impl<T: Real> std::ops::$op<&Variable<T>> for Variable<T> { // tensor * &other
       type Output = Variable<T>;
 
       fn $meth(self, rhs: &Variable<T>) -> Variable<T> {
@@ -154,7 +162,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$op<T> for &Variable<T> { // &tensor * T
+    impl<T: Real> std::ops::$op<T> for &Variable<T> { // &tensor * T
       type Output = Variable<T>;
 
       fn $meth(self, rhs: T) -> Variable<T> {
@@ -162,7 +170,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl<T: Real> ops::$op<T> for Variable<T> { // tensor * T
+    impl<T: Real> std::ops::$op<T> for Variable<T> { // tensor * T
       type Output = Variable<T>;
 
       fn $meth(self, rhs: T) -> Variable<T> {
@@ -170,7 +178,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl ops::$op<&Variable<f32>> for f32 { // T * &tensor
+    impl std::ops::$op<&Variable<f32>> for f32 { // T * &tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: &Variable<f32>) -> Variable<f32> {
@@ -178,7 +186,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl ops::$op<Variable<f32>> for f32 { // T * tensor
+    impl std::ops::$op<Variable<f32>> for f32 { // T * tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: Variable<f32>) -> Variable<f32> {
@@ -301,6 +309,30 @@ impl<T: Real> BinaryOp<T> for MatMul {
       }
     }
     (grad_l, grad_r)
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Range {
+  ranges: Vec<std::ops::Range<isize>>,
+}
+
+impl<T: Real> UnaryOp<T> for Range {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.range(&self.ranges)
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let out = Tensor::zeros(&lhs.shape().dims);
+    let sliced = out.shape().range(&self.ranges);
+    {
+      let mut out_raw = out.raw_mut();
+      for (i, g) in sliced.iter().zip(grad.param_iter()) {
+        out_raw[i] = g;
+      }
+    }
+    out
   }
 }
 

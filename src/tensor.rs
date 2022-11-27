@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
-use std::ops::Range;
 use std::fmt::Debug;
 
 use rand::{Rng};
@@ -15,7 +14,7 @@ use crate::{
   shape::Shape,
   variable::Variable,
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
-  ops::{ BaseOps, NumericOps, Hops },
+  ops::{ BaseOps, NumericOps, BaseHops, RealHops },
 };
 
 
@@ -34,11 +33,12 @@ pub struct Tensor<T: Inner> {
   data: Rc<RefCell<Vec<T>>>,
 }
 
-impl<T: Real> Hops<T> for Tensor<T> {}
+impl<T: Inner> BaseHops<T> for Tensor<T> {}
+impl<T: Real> RealHops<T> for Tensor<T> {}
 
 impl<T: Inner> PartialEq for Tensor<T> {
   fn eq(&self, rhs: &Self) -> bool {
-    if self.shape.squeeze().dims != rhs.shape.squeeze().dims { return false }
+    if self.shape.squeeze_all().dims != rhs.shape.squeeze_all().dims { return false }
     let data_l = self.data.borrow();
     let data_r = rhs.data.borrow();
     for (i, j) in self.shape.iter().zip(rhs.shape.iter()) {
@@ -78,25 +78,25 @@ impl<T: Inner> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  pub fn rows(rows: &[Tensor<T>]) -> Self {
-    let mut dims = rows[0].shape.dims.clone();
-    dims.insert(0, rows.len());
-    let data = rows.iter()
-      .map(|row| row.detach().into_raw() )
-      .collect::<Vec<_>>()
-      .concat();
-    Self::new(&dims, data)
-  }
+  // pub fn rows(rows: &[Tensor<T>]) -> Self {
+  //   let mut dims = rows[0].shape.dims.clone();
+  //   dims.insert(0, rows.len());
+  //   let data = rows.iter()
+  //     .map(|row| row.detach().into_raw() )
+  //     .collect::<Vec<_>>()
+  //     .concat();
+  //   Self::new(&dims, data)
+  // }
 
-  pub fn stack(rows: &[Tensor<T>]) -> Self { //XXX write as Hop over concat
-    let mut dims = rows[0].shape.dims.clone();
-    dims[0] = rows.iter().map(|row| row.shape[0] ).sum();
-    let data = rows.iter()
-      .map(|row| row.detach().into_raw() )
-      .collect::<Vec<_>>()
-      .concat();
-    Self::new(&dims, data)
-  }
+  // pub fn stack(rows: &[Tensor<T>]) -> Self { //XXX write as Hop over concat
+  //   let mut dims = rows[0].shape.dims.clone();
+  //   dims[0] = rows.iter().map(|row| row.shape[0] ).sum();
+  //   let data = rows.iter()
+  //     .map(|row| row.detach().into_raw() )
+  //     .collect::<Vec<_>>()
+  //     .concat();
+  //   Self::new(&dims, data)
+  // }
 
   pub fn raw(&self) -> Ref<Vec<T>> {
     self.data.borrow()
@@ -119,7 +119,7 @@ impl<T: Inner> Tensor<T> {
   }
 
   pub fn feed(&self, other: &Self) {
-    assert!(self.shape.squeeze().dims == other.shape.squeeze().dims,
+    assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not feed {} tensor with {} tensor", self.shape, other.shape);
     // Avoid clashing borrow when tensors share storage
     let other = if Rc::ptr_eq(&self.data, &other.data) {
@@ -231,44 +231,20 @@ impl<T: Inner> Tensor<T> {
     TensorIterator::new(self)
   }
 
-  pub fn at(&self, indices: &[usize]) -> Self {
-    let shape = self.shape.take(indices);
-    let data = self.data.clone();
-    Self { shape, data}
-  }
-
-  pub fn range(&self, ranges: &[Range<isize>]) -> Self {
-    let shape = self.shape.range(ranges);
-    let data = self.data.clone();
-    Self { shape, data }
-  }
+  // pub fn at(&self, indices: &[usize]) -> Self {
+  //   let shape = self.shape.take(indices);
+  //   let data = self.data.clone();
+  //   Self { shape, data}
+  // }
 
   pub fn item(&self) -> T {
-    assert!(self.shape.squeeze().rank() == 0,
+    assert!(self.shape.squeeze_all().rank() == 0,
       "Can't extract item from non-scalar {}", self.shape);
     self.raw()[self.shape.offset]
   }
 
   pub fn view(&self, shape: &[usize]) -> Self {
     let shape = self.shape.view(shape);
-    let data = self.data.clone();
-    Self { shape, data }
-  }
-
-  pub fn squeeze(&self) -> Self {
-    let shape = self.shape.squeeze();
-    let data = self.data.clone();
-    Self { shape, data }
-  }
-
-  pub fn squeeze_only(&self, dim: isize) -> Self {
-    let shape = self.shape.squeeze_only(dim);
-    let data = self.data.clone();
-    Self { shape, data }
-  }
-
-  pub fn squeeze_but(&self, dim: isize) -> Self {
-    let shape = self.shape.squeeze_but(dim);
     let data = self.data.clone();
     Self { shape, data }
   }

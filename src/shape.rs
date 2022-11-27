@@ -67,6 +67,19 @@ impl Shape {
     self.dims.len()
   }
 
+  pub fn contiguous(&self) -> bool {
+    self.strides == Self::make_strides(&self.dims)
+  }
+
+  pub fn at_or(&self, idx: isize, or: usize) -> usize {
+    let off_bounds = if idx < 0 {
+      idx.abs() as usize > self.rank()
+    } else {
+      idx as usize >= self.rank()
+    };
+    if off_bounds { or } else { self[idx] }
+  }
+
   pub(crate) fn index(&self, indices: &[usize]) -> usize {
     assert!(indices.len() <= self.rank());
     // Append missing dimensions as zero
@@ -82,25 +95,12 @@ impl Shape {
   //   todo!()
   // }
 
-  pub fn contiguous(&self) -> bool {
-    self.strides == Self::make_strides(&self.dims)
-  }
-
   pub fn iter(&self) -> Box<dyn Iterator<Item=usize> + '_> {
     if self.contiguous() {
       Box::new(self.offset..self.offset + self.size())
     } else {
       Box::new(ShapeIterator::new(self))
     }
-  }
-
-  pub fn at_or(&self, idx: isize, or: usize) -> usize {
-    let off_bounds = if idx < 0 {
-      idx.abs() as usize > self.rank()
-    } else {
-      idx as usize >= self.rank()
-    };
-    if off_bounds { or } else { self[idx] }
   }
 
   pub fn view(&self, shape: &[usize]) -> Self { //XXX allow -1 to keep dimension
@@ -119,15 +119,15 @@ impl Shape {
     Self { dims, strides, offset: self.offset }
   }
 
-  pub fn take(&self, indices: &[usize]) -> Self {
-    let dims = self.dims[indices.len()..].to_vec();
-    let strides = self.strides[indices.len()..].to_vec();
-    let offset = self.index(indices);
-    // // Using all indices results in a scalar -> Wrap it with shape [1]
-    // dims.resize(1.max(dims.len()), 1);
-    // strides.resize(1.max(strides.len()), 1);
-    Self { dims, strides, offset }
-  }
+  // pub fn take(&self, indices: &[usize]) -> Self {
+  //   let dims = self.dims[indices.len()..].to_vec();
+  //   let strides = self.strides[indices.len()..].to_vec();
+  //   let offset = self.index(indices);
+  //   // // Using all indices results in a scalar -> Wrap it with shape [1]
+  //   // dims.resize(1.max(dims.len()), 1);
+  //   // strides.resize(1.max(strides.len()), 1);
+  //   Self { dims, strides, offset }
+  // }
 
   pub fn range(&self, ranges: &[Range<isize>]) -> Self {
     let mut offset = 0;
@@ -158,30 +158,36 @@ impl Shape {
     Self::offset(&self.dims, &strides, (offset + self.offset as isize) as usize)
   }
 
-  pub fn squeeze(&self) -> Self {
-    self.squeeze_if(|_| false )
-  }
-
-  pub fn squeeze_only(&self, dim: isize) -> Self {
-    let dim = negative_index(dim, self.rank(), false);
-    self.squeeze_if(|d| d != dim )
-  }
-
-  pub fn squeeze_but(&self, dim: isize) -> Self {
-    let dim = negative_index(dim, self.rank(), false);
-    self.squeeze_if(|d| d == dim )
-  }
-
-  fn squeeze_if(&self, cb: impl Fn(usize) -> bool) -> Self {
+  pub fn squeeze(&self, squeezed: &[isize]) -> Self {
+    let squeezed: Vec<_> = squeezed.iter()
+      .map(|&s| negative_index(s, self.rank(), false) )
+      .collect();
     let mut dims = vec![];
     let mut strides = vec![];
     for (d, &n) in self.dims.iter().enumerate() {
-      if n != 1 || cb(d) {
+      if !(n == 1 && squeezed.contains(&d)) {
         dims.push(n);
         strides.push(self.strides[d]);
       }
     }
     Self { dims, strides, offset: self.offset }
+  }
+
+  // pub fn squeeze_but(&self, dim: isize) -> Self {
+  //   let dim = negative_index(dim, self.rank(), false) as isize;
+  //   let dims: Vec<_> = (0..self.rank() as isize)
+  //     .filter(|&d| d != dim )
+  //     .collect();
+  //   self.squeeze(&dims)
+  // }
+
+  pub fn squeeze_first(&self, n: usize) -> Self {
+    let dims: Vec<_> = (0..n as isize).collect();
+    self.squeeze(&dims)
+  }
+
+  pub fn squeeze_all(&self) -> Self {
+    self.squeeze_first(self.rank())
   }
 
   pub fn unsqueeze(&self, dim: isize) -> Self {
@@ -390,15 +396,15 @@ mod tests {
 
   #[test]
   fn squeeze() {
-    let shape = Shape::new(&[3,2,1]).squeeze();
+    let shape = Shape::new(&[3,2,1]).squeeze_all();
     assert_eq!(shape.dims, vec![3,2]);
     assert_eq!(shape.strides, vec![2,1]);
 
-    let shape = Shape::new(&[1,2,3,2]).squeeze();
+    let shape = Shape::new(&[1,2,3,2]).squeeze_all();
     assert_eq!(shape.dims, vec![2,3,2]);
     assert_eq!(shape.strides, vec![6,2,1]);
 
-    let shape = Shape::new(&[2,1,3,1,2]).squeeze_only(-2);
+    let shape = Shape::new(&[2,1,3,1,2]).squeeze(&[-2]);
     assert_eq!(shape.dims, vec![2,1,3,2]);
     assert_eq!(shape.strides, vec![6,6,2,1]);
   }

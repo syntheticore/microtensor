@@ -13,7 +13,7 @@ pub use graph::Graph;
 use crate::{
   tensor::Tensor,
   scalar::Real,
-  ops::{ BaseOps, NumericOps, Hops },
+  ops::{ BaseOps, NumericOps, BaseHops, RealHops },
 };
 
 
@@ -130,7 +130,8 @@ pub struct Variable<T: Real + 'static> {
   node: Rc<Node<T>>,
 }
 
-impl<T: Real> Hops<T> for Variable<T> {}
+impl<T: Real> BaseHops<T> for Variable<T> {}
+impl<T: Real> RealHops<T> for Variable<T> {}
 
 impl<T: Real> std::ops::Deref for Variable<T> {
   type Target = Tensor<T>;
