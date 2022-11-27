@@ -14,15 +14,16 @@ readme = "README.md"
 [dependencies]
 rand = "0.7.3"
 num-traits = "0.2.15"
-matrixmultiply = { version = "0.3.2", features = ["threading"] }
 serde = { version = "1.0.145", features = ["derive", "rc"] }
 serde_traitobject = "0.2.8"
 postcard = { version = "1.0.2", features = ["alloc"] }
 
+matrixmultiply = { version = "0.3.2", features = ["threading"], optional = true  }
 rayon = { version = "1.5.3", optional = true }
 
 [features]
-default = ["rayon"]
+default = ["unsafe"]
+unsafe = ["dep:matrixmultiply"]
 rayon = ["dep:rayon"]
 
 [profile.dev]
