@@ -118,22 +118,6 @@ impl<T: Inner> Tensor<T> {
     self.shape.rank()
   }
 
-  pub fn feed(&self, other: &Self) {
-    assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
-      "Could not feed {} tensor with {} tensor", self.shape, other.shape);
-    // Avoid clashing borrow when tensors share storage
-    let other = if Rc::ptr_eq(&self.data, &other.data) {
-      other.detach()
-    } else {
-      other.clone()
-    };
-    let mut data = self.data.borrow_mut();
-    let other_data = other.data.borrow();
-    for (i, j) in self.shape.iter().zip(other.shape.iter()) {
-      data[i] = other_data[j];
-    }
-  }
-
   pub fn contiguous(&self) -> Self {
     if self.shape.contiguous() {
       self.clone()
@@ -240,7 +224,7 @@ impl<T: Inner> Tensor<T> {
   pub fn item(&self) -> T {
     assert!(self.shape.squeeze_all().rank() == 0,
       "Can't extract item from non-scalar {}", self.shape);
-    self.raw()[self.shape.offset]
+    self.raw()[self.shape.offset].clone()
   }
 
   pub fn view(&self, shape: &[usize]) -> Self {
@@ -323,6 +307,22 @@ impl<T: Numeric> Tensor<T> {
     let mut a = vec![T::zero(); size];
     a[idx] = T::one();
     Self::from_vec(a)
+  }
+
+  pub fn feed(&self, other: &Self) {
+    assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
+      "Could not feed {} tensor with {} tensor", self.shape, other.shape);
+    // Avoid clashing borrow when tensors share storage
+    let other = if Rc::ptr_eq(&self.data, &other.data) {
+      other.detach()
+    } else {
+      other.clone()
+    };
+    let mut data = self.data.borrow_mut();
+    let other_data = other.data.borrow();
+    for (i, j) in self.shape.iter().zip(other.shape.iter()) {
+      data[i] = other_data[j];
+    }
   }
 
   pub fn add(&self, rhs: &Self) -> Self {
@@ -611,7 +611,7 @@ impl<T: Inner> Iterator for TensorIterator<'_, T> {
   type Item = T;
 
   fn next(&mut self) -> Option<Self::Item> {
-    self.shape_iter.next().and_then(|i| Some(self.data[i]) )
+    self.shape_iter.next().and_then(|i| Some(self.data[i].clone()) )
   }
 }
 

@@ -4,20 +4,20 @@
 //!
 //! # Features
 //!
-//! - **Safe auto-grad** -- Non-differentiable operations return a separate
+//! - **Safe auto-grad** — Non-differentiable operations return a separate
 //! type that cannot be back-propagated, revealing gaps in your computation graph
 //! at compile time.
 //!
 //! - **Broadcasting** — Tensors with differing but compatible shapes get
 //! broadcasted to matching dimensions automatically for most operations.
 //!
-//! - **Arbitrary inner types** -- Tensors can store *almost* any data type and
+//! - **Arbitrary inner types** — Tensors can store *almost* any data type and
 //! compute gradients for any inner type that satisfies [scalar::Real].
 //!
 //! - **Zero-copy views** — Tensors may be sliced, indexed, reshaped, transposed and
 //! broadcasted without actually copying any data in most situations.
 //!
-//! - **Graph recycling** -- Computation graphs, created by tracing an eager computation,
+//! - **Graph recycling** — Computation graphs, created by tracing an eager computation,
 //! can be reevaluated at a later time with new input data. They can also be serialized
 //! and loaded elsewhere, without access to the original code.
 //!

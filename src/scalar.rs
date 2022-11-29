@@ -7,8 +7,8 @@ use num_traits::{PrimInt, NumAssignOps, Num, NumCast};
 /// This trait gets implemented automatically for all types
 /// that satisfy its dependent traits.
 
-pub trait Inner: PartialEq + Clone + Copy + Send + Sync + std::fmt::Debug {}
-impl<T: PartialEq + Clone + Copy + Send + Sync + std::fmt::Debug> Inner for T {}
+pub trait Inner: PartialEq + Clone + Send + Sync + std::fmt::Debug {}
+impl<T: PartialEq + Clone + Send + Sync + std::fmt::Debug> Inner for T {}
 
 
 /// All numeric types.
@@ -16,8 +16,8 @@ impl<T: PartialEq + Clone + Copy + Send + Sync + std::fmt::Debug> Inner for T {}
 /// This trait gets implemented automatically for all types
 /// that satisfy its dependent traits.
 
-pub trait Numeric: Inner + PartialOrd + Num + NumCast + NumAssignOps + std::iter::Sum {}
-impl<T: Inner + PartialOrd + Num + NumCast + NumAssignOps + std::iter::Sum> Numeric for T {}
+pub trait Numeric: Inner + Copy + PartialOrd + Num + NumCast + NumAssignOps + std::iter::Sum {}
+impl<T: Inner + Copy + PartialOrd + Num + NumCast + NumAssignOps + std::iter::Sum> Numeric for T {}
 
 
 /// All signed numeric types.

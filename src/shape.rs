@@ -56,7 +56,8 @@ impl Shape {
       .enumerate()
       .map(|(d, &s)| if s < 0 {
         ((dims[d] as isize - 1) * s.abs()) as usize
-      } else { 0 }).sum()
+      } else { 0 })
+      .sum()
   }
 
   pub fn size(&self) -> usize {
@@ -115,6 +116,7 @@ impl Shape {
     } else {
       n
     }).collect();
+    assert_eq!(dims.iter().product::<usize>(), self.size());
     let strides = Self::make_strides(&dims);
     Self { dims, strides, offset: self.offset }
   }

@@ -36,7 +36,7 @@ fn main() {
   let loss = (&label_input - &output).sqr().mean(0);
 
   // Train with some labeled samples
-  let learning_rate = 0.1;
+  let learning_rate = 0.01;
   for _ in 0..100 {
     // Insert real training data here
     let images = Tensor::ones(&[32, 28 * 28]).tracked();
