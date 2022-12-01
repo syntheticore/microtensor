@@ -309,6 +309,21 @@ impl<T: Numeric> Tensor<T> {
     Self::from_vec(a)
   }
 
+  pub fn band(dims: &[usize], num_lower: isize, num_upper: isize) -> Self {
+    let shape = Shape::new(dims);
+    let mut data = vec![T::zero(); shape.size()];
+    let l = shape[-1] as isize;
+    let p = shape[-2] as isize;
+    for i in 0..shape.size() as isize {
+      let n = i % l;
+      let m = (i / l) % p;
+      let one = (num_lower < 0 || (m - n) <= num_lower) &&
+                (num_upper < 0 || (n - m) <= num_upper);
+      if one { data[i as usize] = T::one() };
+    }
+    Self::from_shape(shape, data)
+  }
+
   pub fn feed(&self, other: &Self) {
     assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not feed {} tensor with {} tensor", self.shape, other.shape);

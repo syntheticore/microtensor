@@ -188,6 +188,7 @@ where
   }
 
   fn max_with(&self, rhs: &Self) -> Self {
+    //XXX broadcast
     self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0).squeeze_only(0)
   }
 }
