@@ -346,9 +346,15 @@ impl<T: Numeric> Tensor<T> {
   }
 
   pub fn sum_over(&self, dim: isize) -> Self {
-    self.collapse_only(dim, |t| {
-      t.iter(0).sum()
-    })
+    let dim = negative_index(dim, self.rank(), false);
+    if dim == self.rank() - 1 {
+      // Optimize basic case
+      self.sum(-1).unsqueeze(-1)
+    } else {
+      self.collapse_only(dim as isize, |t| {
+        t.iter(0).sum()
+      })
+    }
   }
 
   pub fn gt(&self, rhs: &Self) -> Tensor<bool> {
@@ -474,8 +480,8 @@ impl<T: Integer + Unsigned> Tensor<T> {
     let confusion = Self::zeros(&[num_classes, num_classes]);
     for (pred, real) in self.iter(0).zip(labels.iter(0)) {
       let mut x = confusion.at(&[
-        <usize as NumCast>::from(pred.item()).unwrap(),
-        <usize as NumCast>::from(real.item()).unwrap()
+        <isize as NumCast>::from(pred.item()).unwrap(),
+        <isize as NumCast>::from(real.item()).unwrap()
       ]);
       x += Tensor::scalar(T::one());
     }
@@ -586,7 +592,7 @@ impl<T: Inner> Iterator for TensorSliceIterator<T> {
 
   fn next(&mut self) -> Option<Self::Item> {
     if self.index == self.tensor.shape[0] { return None }
-    let out = self.tensor.at(&[self.index]);
+    let out = self.tensor.at(&[self.index as isize]);
     self.index += 1;
     Some(out)
   }
@@ -662,5 +668,8 @@ mod tests {
   fn sum_over() {
     let a = Tensor::arrange(&[3,2,2], 0, 1).sum_over(1);
     assert_eq!(a, Tensor::new(&[3, 1, 2], vec![2, 4, 10, 12, 18, 20]));
+
+    let a = Tensor::arrange(&[3,2,2], 0, 1).sum_over(-1);
+    assert_eq!(a, Tensor::new(&[3, 2, 1], vec![1, 5, 9, 13, 17, 21]));
   }
 }

@@ -127,8 +127,8 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let dims = [dims_b, dims].concat();
 
     let data = (0..batch_size).flat_map(|b|
-      lhs.at(&[b.min(lhs.shape.dims[0] - 1)]).matmul(
-      &rhs.at(&[b.min(rhs.shape.dims[0] - 1)]))
+      lhs.at(&[b.min(lhs.shape.dims[0] - 1) as isize]).matmul(
+      &rhs.at(&[b.min(rhs.shape.dims[0] - 1) as isize]))
     ).collect();
 
     Self::new(&dims, data)

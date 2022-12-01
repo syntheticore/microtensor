@@ -139,7 +139,8 @@ impl Shape {
       let start = negative_index(range.start, dim, true);
       let end = negative_index(range.end, dim, true);
       offset += self.strides[d] * start as isize;
-      dims[d] = end - start
+      dims[d] = end - start;
+      assert!(end - start > 0, "Invalid range {:?}", ranges);
     }
     Self { dims, strides: self.strides.clone(), offset: (self.offset as isize + offset) as usize }
   }

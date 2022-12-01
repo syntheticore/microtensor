@@ -23,7 +23,7 @@ pub trait BaseOps<I: Inner>: Clone {
   fn range(&self, ranges: &[Range<isize>]) -> Self;
   fn broadcast(&self, shape: &Shape) -> Self;
   fn reshape(&self, dims: &[usize]) -> Self;
-  fn squeeze(&self, squeezed: &[isize]) -> Self;
+  fn squeeze(&self, dims: &[isize]) -> Self;
   fn unsqueeze(&self, dim: isize) -> Self;
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
   fn concat(&self, rhs: &Self, dim: isize) -> Self;
@@ -68,9 +68,12 @@ pub trait RealOps<I: Real>: std::ops::Neg {
 /// differentiable when called on a [Variable](crate::Variable).
 
 pub trait BaseHops<I: Inner>: BaseOps<I> {
-  fn at(&self, indices: &[usize]) -> Self {
-    let ranges: Vec<_> = indices.iter()
-      .map(|&i| i as isize .. i as isize + 1 )
+  fn at(&self, indices: &[isize]) -> Self {
+    let ranges: Vec<_> = indices.iter().enumerate()
+      .map(|(i, &idx)| {
+        let idx = negative_index(idx, self.shape().dims[i], false);
+        idx as isize .. idx as isize + 1
+      })
       .collect();
     self.range(&ranges).squeeze_first(indices.len())
   }
@@ -97,6 +100,20 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.squeeze_first(self.shape().rank())
   }
 
+  fn unsqueeze_n(&self, n: usize, dim: isize) -> Self {
+    let dim = negative_index(dim, self.shape().rank(), true) as isize;
+    let mut out = self.clone();
+    for _ in 0..n {
+      out = out.unsqueeze(dim);
+    }
+    out
+  }
+
+  fn extend(&self, rank: usize) -> Self {
+    let n = rank - self.shape().rank();
+    self.unsqueeze_n(n, -1)
+  }
+
   fn stack(rows: &[Self], dim: isize) -> Self {
     assert!(rows.len() >= 1);
     let mut out = rows[0].clone();
@@ -120,7 +137,7 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
 /// Mops and other Hops. As a result, these are all
 /// differentiable when called on a [Variable](crate::Variable).
 
-pub trait RealHops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I>
+pub trait RealHops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I> + BaseHops<I>
 where
   I: Real,
   for<'a> &'a Self: NumOps<&'a Self, Self> + NumOps<I, Self>,
@@ -160,16 +177,18 @@ where
   // mean_over
 
   fn variance(&self, dim: isize) -> Self {
-    (self - &self.mean(dim).unsqueeze(-1)).sqr().mean(dim)
+    let mean = self.mean(dim).extend(self.shape().rank());
+    (self - &mean).sqr().mean(dim)
   }
 
   fn softmax(&self, dim: isize) -> Self {
-    let exp = (self - &self.max(dim).unsqueeze(-1)).exp();
-    &exp / &exp.sum(dim).unsqueeze(-1)
+    let max = self.max(dim).extend(self.shape().rank());
+    let exp = (self - &max).exp();
+    &exp / &exp.sum(dim).extend(exp.shape().rank())
   }
 
   fn max_with(&self, rhs: &Self) -> Self {
-    self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0)
+    self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0).squeeze_only(0)
   }
 }
 
