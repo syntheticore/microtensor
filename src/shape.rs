@@ -203,7 +203,7 @@ impl Shape {
     shape
   }
 
-  pub fn extend(&self, size: usize) -> Self {
+  pub fn extend_front(&self, size: usize) -> Self {
     assert!(self.rank() <= size);
     let mut shape = self.clone();
     for _ in 0..size - self.rank() {
@@ -213,7 +213,10 @@ impl Shape {
     shape
   }
 
-  pub fn broadcast(&self, other: &Self) -> Self {
+  pub fn broadcast(&self, other: &Self, ignore_from: Option<isize>) -> Self {
+    let rank = self.rank().max(other.rank());
+    let ignore = ignore_from.unwrap_or(rank as isize);
+    let ignore = negative_index(ignore, rank, false);
     let mut dims = vec![];
     let mut strides = vec![];
     self.dims.iter()
@@ -222,15 +225,22 @@ impl Shape {
       .zip(other.dims.iter()
         .rev()
         .chain(std::iter::repeat(&1)))
-      .inspect(|(&a, &b)|
-        assert!(a == b || a == 1 || b == 1, "Could not broadcast {} & {}", self, other) )
-      .take(self.rank().max(other.rank()))
+      .enumerate()
+      .inspect(|(i, (&a, &b))|
+        assert!(a == b || a == 1 || b == 1 || rank - 1 - i >= ignore,
+          "Could not broadcast {} & {}", self, other))
+      .take(rank)
       .zip(self.strides.iter()
         .rev()
         .chain(std::iter::repeat(&0)))
-      .for_each(|((&dl, &dr), &stride)| {
-        dims.push(dl.max(dr));
-        strides.push(if dl == 1 && dr != 1 { 0 } else { stride });
+      .for_each(|((i, (&dl, &dr)), &stride)| {
+        if rank - 1 - i >= ignore {
+          dims.push(dl);
+          strides.push(stride);
+        } else {
+          dims.push(dl.max(dr));
+          strides.push(if dl == 1 && dr != 1 { 0 } else { stride });
+        }
       });
       let dims: Vec<_> = dims.into_iter().rev().collect();
       let strides: Vec<_> = strides.into_iter().rev().collect();
@@ -263,7 +273,7 @@ impl std::fmt::Display for Shape {
 }
 
 
-/// Iterate through a [Shape]'s indices.
+/// Iterate through a strided memory representation.
 
 pub struct ShapeIterator<'a> {
   shape: &'a Shape,
@@ -310,6 +320,45 @@ impl<'a> Iterator for ShapeIterator<'a> {
       }
     }
     Some(out)
+  }
+}
+
+
+/// Iterate through multiple dimensions.
+
+pub struct DimensionIterator {
+  dims: Vec<usize>,
+  size: usize,
+  idx: usize,
+}
+
+impl DimensionIterator {
+  pub fn new(dims: &[usize]) -> Self {
+    Self {
+      dims: dims.to_vec(),
+      size: dims.iter().product(),
+      idx: 0,
+    }
+  }
+}
+
+impl Iterator for DimensionIterator {
+  type Item = Vec<isize>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.idx == self.size { return None }
+    let mut stride = 1;
+    let dims = self.dims.iter().rev()
+      .map(|d| {
+        let n = (self.idx / stride) % d;
+        stride *= d;
+        n as isize
+      })
+      .collect::<Vec<_>>()
+      .into_iter().rev()
+      .collect();
+    self.idx += 1;
+    Some(dims)
   }
 }
 
@@ -365,6 +414,12 @@ mod tests {
   }
 
   #[test]
+  fn iterate_dimensions() {
+    let indices: Vec<Vec<isize>> = DimensionIterator::new(&[2,2,3]).collect();
+    assert_eq!(indices.last().unwrap(), &vec![1,1,2]);
+  }
+
+  #[test]
   fn step() {
     let shape = Shape::new(&[3,2,2]).step(&[1,-1,1]);
     assert_eq!(shape.strides, vec![4,-2,1]);
@@ -413,19 +468,19 @@ mod tests {
   }
 
   #[test]
-  fn extend() {
-    let shape = Shape::new(&[2,3]).extend(4);
+  fn extend_front() {
+    let shape = Shape::new(&[2,3]).extend_front(4);
     assert_eq!(shape.dims, vec![1,1,2,3]);
     assert_eq!(shape.strides, vec![6,6,3,1]);
   }
 
   #[test]
   fn broadcast() {
-    let shape = Shape::new(&[2,3,2]).broadcast(&Shape::new(&[2,1,2]));
+    let shape = Shape::new(&[2,3,2]).broadcast(&Shape::new(&[2,1,2]), None);
     assert_eq!(shape.dims, vec![2,3,2]);
     assert_eq!(shape.strides, vec![6,2,1]);
 
-    let shape = Shape::new(&[2,1,2]).broadcast(&Shape::new(&[2,3,1]));
+    let shape = Shape::new(&[2,1,2]).broadcast(&Shape::new(&[2,3,1]), None);
     assert_eq!(shape.dims, vec![2,3,2]);
     assert_eq!(shape.strides, vec![2,0,1]);
 

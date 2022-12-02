@@ -25,7 +25,7 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.unary_op(Range { ranges: ranges.to_vec() })
   }
 
-  fn broadcast(&self, shape: &Shape) -> Self {
+  fn broadcast(&self, shape: &Shape, _ignore_from: Option<isize>) -> Self {
     self.unary_op(Broadcast { dims: shape.dims.clone() })
   }
 
@@ -79,7 +79,7 @@ impl<T: Real> SignedOps<T> for Variable<T> {
 impl<T: Real> RealOps<T> for Variable<T> {
   fn pow(&self, rhs: &Self) -> Variable<T> {
     let (lhs, rhs) = if self.shape().dims != rhs.shape().dims {
-      (self.broadcast(&rhs.shape()), rhs.broadcast(&self.shape()))
+      (self.broadcast(&rhs.shape(), None), rhs.broadcast(&self.shape(), None))
     } else {
       (self.clone(), rhs.clone())
     };
@@ -130,7 +130,7 @@ macro_rules! add_operator {
 
       fn $meth(self, rhs: Self) -> Variable<T> {
         let (lhs, rhs) = if self.shape().dims != rhs.shape().dims {
-          (self.broadcast(&rhs.shape()), rhs.broadcast(&self.shape()))
+          (self.broadcast(&rhs.shape(), None), rhs.broadcast(&self.shape(), None))
         } else {
           (self.clone(), rhs.clone())
         };
@@ -300,14 +300,25 @@ impl<T: Real> BinaryOp<T> for MatMul {
     let rank_r = rhs.rank();
     let rank = rank_l.max(rank_r);
 
-    // Sum over batch dimension if tensor was broadcasted for bmm
-    if rank == 3 {
-      if rank_l < rank_r {
-        grad_l = grad_l.sum_over(0).squeeze_only(0)
-      } else if rank_r < rank_l {
-        grad_r = grad_r.sum_over(0).squeeze_only(0)
-      }
-    }
+    // Sum over batch dimensions if tensor was broadcasted for bmm
+    lhs.shape().dims.iter()
+      .rev()
+      .chain(std::iter::repeat(&1))
+      .zip(rhs.shape().dims.iter()
+        .rev()
+        .chain(std::iter::repeat(&1)))
+      .enumerate()
+      .skip(2)
+      .take(rank)
+      .for_each(|(i, (&dl, &dr))| {
+        let i = rank as isize - 1 - i as isize;
+        if dl == 1 && dr != 1 {
+          grad_l = grad_l.sum_over(i).squeeze_only(i)
+        } else if dr == 1 && dl != 1 {
+          grad_r = grad_r.sum_over(i).squeeze_only(i)
+        }
+      });
+
     (grad_l, grad_r)
   }
 }
@@ -344,11 +355,11 @@ pub struct Broadcast {
 
 impl<T: Real> UnaryOp<T> for Broadcast {
   fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.broadcast(&Shape::new(&self.dims))
+    lhs.broadcast(&Shape::new(&self.dims), None)
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let shape = lhs.shape().broadcast(&Shape::new(&self.dims));
+    let shape = lhs.shape().broadcast(&Shape::new(&self.dims), None);
     let mut grad = grad.clone();
     for (d, &stride) in shape.strides.iter().enumerate().rev() {
       if stride == 0 {

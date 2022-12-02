@@ -11,7 +11,7 @@ mod lops;
 
 use crate::{
   internal::*,
-  shape::Shape,
+  shape::{ Shape, DimensionIterator },
   variable::Variable,
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
   ops::{ BaseOps, NumericOps, BaseHops, RealHops },
@@ -135,8 +135,8 @@ impl<T: Inner> Tensor<T> {
     O: Inner,
     F: Fn((T, T)) -> O,
   {
-    let rhs = rhs.broadcast(&self.shape);
-    let data: Vec<O> = self.broadcast(&rhs.shape).param_iter()
+    let rhs = rhs.broadcast(&self.shape, None);
+    let data: Vec<O> = self.broadcast(&rhs.shape, None).param_iter()
       .zip(rhs.param_iter())
       .map(cb)
       .collect();
@@ -233,8 +233,8 @@ impl<T: Inner> Tensor<T> {
     Self { shape, data }
   }
 
-  pub fn extend(&self, size: usize) -> Self {
-    let shape = self.shape.extend(size);
+  pub fn extend_front(&self, size: usize) -> Self {
+    let shape = self.shape.extend_front(size);
     let data = self.data.clone();
     Self { shape, data }
   }
@@ -532,10 +532,10 @@ impl Tensor<bool> {
   }
 
   pub fn when<O: Inner>(&self, either: Tensor<O>, or: Tensor<O>) -> Tensor<O> {
-    let shape = self.shape.broadcast(&either.shape).broadcast(&or.shape);
-    let this = self.broadcast(&shape);
-    let either = either.broadcast(&shape);
-    let or = or.broadcast(&shape);
+    let shape = self.shape.broadcast(&either.shape, None).broadcast(&or.shape, None);
+    let this = self.broadcast(&shape, None);
+    let either = either.broadcast(&shape, None);
+    let or = or.broadcast(&shape, None);
     let data = either.param_iter()
       .zip(or.param_iter())
       .zip(this.param_iter())
@@ -579,40 +579,35 @@ fn print_chunks<T: std::fmt::Debug>(idx: usize, shape: &Shape, vec: &[T], f: &mu
 }
 
 
-pub struct TensorSliceIterator<T: Inner> {
-  tensor: Tensor<T>,
-  index: usize,
+/// Iterate slices of a [Tensor] along a particular axis.
+
+pub struct TensorSliceIterator<'a, T: Inner> {
+  tensor: &'a Tensor<T>,
+  iter: DimensionIterator,
 }
 
-impl<T: Inner> TensorSliceIterator<T> {
-  fn new(tensor: &Tensor<T>, dim: isize) -> Self {
-    let dim = negative_index(dim, tensor.shape.rank(), false);
-    // Reshape to [1,1,1,0,8]
-    let mut shape = tensor.shape.dims.clone();
-    for i in 0..dim { shape[i] = 1 }
-    shape[dim] = 0;
-    let mut tensor = tensor.reshape(&shape);
-    for _ in 0..dim { //XXX use squeeze_but
-      tensor = tensor.squeeze_only(0);
-    }
+impl<'a, T: Inner> TensorSliceIterator<'a, T> {
+  fn new(tensor: &'a Tensor<T>, dim: isize) -> Self {
+    let dim = negative_index(dim, tensor.rank(), false);
+    let dims = &tensor.shape.dims[0..dim + 1];
     Self {
       tensor,
-      index: 0,
+      iter: DimensionIterator::new(dims),
     }
   }
 }
 
-impl<T: Inner> Iterator for TensorSliceIterator<T> {
+impl<T: Inner> Iterator for TensorSliceIterator<'_, T> {
   type Item = Tensor<T>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if self.index == self.tensor.shape[0] { return None }
-    let out = self.tensor.at(&[self.index as isize]);
-    self.index += 1;
-    Some(out)
+    let dims = self.iter.next();
+    dims.and_then(|dims| Some(self.tensor.at(&dims)) )
   }
 }
 
+
+/// Iterate a [Tensor]'s individual parameters.
 
 pub struct TensorIterator<'a, T: Inner> {
   data: Ref<'a, Vec<T>>,

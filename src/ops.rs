@@ -21,10 +21,10 @@ pub trait BaseOps<I: Inner>: Clone {
   fn scalar(item: I) -> Self;
   fn shape(&self) -> &Shape;
   fn range(&self, ranges: &[Range<isize>]) -> Self;
-  fn broadcast(&self, shape: &Shape) -> Self;
+  fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self;
   fn reshape(&self, dims: &[usize]) -> Self;
   fn squeeze(&self, dims: &[isize]) -> Self;
-  fn unsqueeze(&self, dim: isize) -> Self;
+  fn unsqueeze(&self, dim: isize) -> Self; //XXX multiple dims
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
   fn concat(&self, rhs: &Self, dim: isize) -> Self;
 }

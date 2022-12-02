@@ -5,7 +5,7 @@ use crate::{
   shape::Shape,
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
-  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
+  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps },
 };
 
 
@@ -24,9 +24,9 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     Self { shape, data }
   }
 
-  fn broadcast(&self, shape: &Shape) -> Self {
+  fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self {
     Self {
-      shape: self.shape.broadcast(shape),
+      shape: self.shape.broadcast(shape, ignore_from),
       data: self.data.clone(),
     }
   }
@@ -100,21 +100,24 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
 
     // Extend with batch dimension
     let no_batch = lhs.rank() == 2 && rhs.rank() == 2;
-    lhs = lhs.extend(3);
-    rhs = rhs.extend(3);
+    if no_batch {
+      lhs = lhs.unsqueeze(0);
+      rhs = rhs.unsqueeze(0);
+    }
 
     // Batch size must be broadcastable
-    //XXX allow arbitrary shape before matrix dims
-    assert!(lhs.shape.dims[0] == rhs.shape.dims[0] ||
-      lhs.shape.dims[0] == 1 || rhs.shape.dims[0] == 1,
-      "Could not broadcast batch sizes {} & {}", lhs.shape.dims[0], rhs.shape.dims[0]);
+    let lhs = lhs.broadcast(&rhs.shape, Some(-2));
+    let rhs = rhs.broadcast(&lhs.shape, Some(-2));
 
-    let batch_size = lhs.shape.dims[0].max(rhs.shape.dims[0]);
+    // Batched multiplication
+    let data = lhs.iter(-3).zip(rhs.iter(-3))
+      .flat_map(|(ml, mr)| ml.matmul(&mr) )
+      .collect();
 
-    // Squeeze back result
+    // Construct result shape
     let rows_l = lhs.shape[-2];
     let cols_r = rhs.shape[-1];
-    let dims = if pad_l {
+    let last_dims = if pad_l {
       vec![cols_r]
     } else if pad_r {
       // vec![rows_l]
@@ -123,13 +126,10 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
       vec![rows_l, cols_r]
     };
 
-    let dims_b = if no_batch { vec![] } else { vec![batch_size] };
-    let dims = [dims_b, dims].concat();
-
-    let data = (0..batch_size).flat_map(|b|
-      lhs.at(&[b.min(lhs.shape.dims[0] - 1) as isize]).matmul(
-      &rhs.at(&[b.min(rhs.shape.dims[0] - 1) as isize]))
-    ).collect();
+    let n = lhs.rank() - 2;
+    let start = if no_batch { 1 } else { 0 };
+    let dims = lhs.shape.dims[start..n].to_vec();
+    let dims = [dims, last_dims].concat();
 
     Self::new(&dims, data)
   }
