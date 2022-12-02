@@ -3,6 +3,7 @@ use std::fs;
 use std::rc::Rc;
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use serde::{Serialize, Deserialize, de::DeserializeOwned};
 
 use crate::{
@@ -45,8 +46,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
       .collect::<Vec<_>>()
       .concat();
     history.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap() );
-    history.dedup();
-    history
+    history.into_iter().unique_by(|a| a.id ).collect()
   }
 
   pub fn parameters(&self) -> Vec<Variable<T>> {

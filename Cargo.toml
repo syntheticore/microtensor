@@ -14,6 +14,7 @@ readme = "README.md"
 [dependencies]
 rand = "0.7.3"
 num-traits = "0.2.15"
+itertools = "0.10.5"
 serde = { version = "1.0.145", features = ["derive", "rc"] }
 serde_traitobject = "0.2.8"
 postcard = { version = "1.0.2", features = ["alloc"] }
