@@ -207,6 +207,28 @@ impl<T: Inner> Tensor<T> {
     Tensor::new(&dims, data)
   }
 
+  pub fn map<O,F>(&self, dim: isize, cb: F) -> Tensor<O>
+  where
+    O: Inner,
+    F: Fn(Self) -> Tensor<O>,
+  {
+    let dim = negative_index(dim, self.shape.rank(), false);
+    let mut dims = None;
+    let data = self.iter(dim as isize)
+      .map(|t| cb(t) )
+      .inspect(|t| {
+        assert!(dims.is_none() || &t.shape.dims == dims.as_ref().unwrap(),
+          "Map must produce tensors of equal dimensions");
+        if !dims.is_some() {
+          dims = Some(t.shape.dims.clone());
+        }
+      })
+      .flat_map(|t| t.into_raw() )
+      .collect();
+    let dims = vec![self.shape.dims[..=dim].to_vec(), dims.unwrap()].concat();
+    Tensor::new(&dims, data)
+  }
+
   pub fn iter(&self, dim: isize) -> TensorSliceIterator<T> {
     TensorSliceIterator::new(self, dim)
   }
@@ -378,6 +400,15 @@ impl<T: Numeric> Tensor<T> {
 
   pub fn lt(&self, rhs: &Self) -> Tensor<bool> {
     self.zip(rhs, |(a, b)| a < b )
+  }
+
+  pub fn top_k(&self, k: usize, dim: isize) -> Self {
+    let dim = negative_index(dim, self.shape.rank() - 1, true);
+    self.unsqueeze(0).map(dim as isize, |t| {
+      let mut data = t.detach().into_raw();
+      data.sort_by(|a, b| b.partial_cmp(a).unwrap() );
+      Self::new(&[k], data[..k].to_vec())
+    })
   }
 
   /// Collapse dimension using index of its greatest value
@@ -681,5 +712,28 @@ mod tests {
 
     let a = Tensor::arrange(&[3,2,2], 0, 1).sum_over(-1);
     assert_eq!(a, Tensor::new(&[3, 2, 1], vec![1, 5, 9, 13, 17, 21]));
+  }
+
+  #[test]
+  fn argmax() {
+    let a: Tensor<usize> = Tensor::arrange(&[3,2,2], 0, 1).argmax(-1);
+    assert_eq!(a, Tensor::new(&[3, 2], vec![1, 1, 1, 1, 1, 1]));
+  }
+
+  #[test]
+  fn map() {
+    let a: Tensor<usize> = Tensor::<usize>::ones(&[3,2]).map(0, |_| Tensor::ones(&[4,4]) );
+    assert_eq!(a.shape.dims, vec![3,4,4]);
+    let a: Tensor<usize> = Tensor::<usize>::ones(&[3,2]).map(-1, |_| Tensor::ones(&[4,4]) );
+    assert_eq!(a.shape.dims, vec![3,2,4,4]);
+  }
+
+  #[test]
+  fn top_k() {
+    let a: Tensor<usize> = Tensor::arrange(&[5,5], 0, 1).top_k(3, 0);
+    assert_eq!(a, Tensor::new(&[3], vec![24, 23, 22]));
+
+    let a: Tensor<usize> = Tensor::arrange(&[5,5], 0, 1).top_k(3, -1);
+    assert_eq!(a, Tensor::new(&[5,3], vec![4, 3, 2, 9, 8, 7, 14, 13, 12, 19, 18, 17, 24, 23, 22]));
   }
 }
