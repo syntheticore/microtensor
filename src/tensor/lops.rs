@@ -11,7 +11,7 @@ use crate::{
 
 impl<T: Inner> BaseOps<T> for Tensor<T> {
   fn scalar(item: T) -> Self {
-    Self::vec(&[item])
+    Self::new(&[], vec![item])
   }
 
   fn shape(&self) -> &Shape {

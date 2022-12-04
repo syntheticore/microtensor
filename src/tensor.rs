@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use std::fmt::Debug;
 
-use rand::{Rng};
+use rand::{Rng, distributions::{Distribution, WeightedIndex}};
 use num_traits::NumCast;
 use serde::{Serialize, Deserialize};
 
@@ -38,11 +38,9 @@ impl<T: Real> RealHops<T> for Tensor<T> {}
 
 impl<T: Inner> PartialEq for Tensor<T> {
   fn eq(&self, rhs: &Self) -> bool {
-    if self.shape.squeeze_all().dims != rhs.shape.squeeze_all().dims { return false }
-    let data_l = self.data.borrow();
-    let data_r = rhs.data.borrow();
-    for (i, j) in self.shape.iter().zip(rhs.shape.iter()) {
-      if data_l[i] != data_r[j] { return false }
+    if self.shape.dims != rhs.shape.dims { return false }
+    for (l, r) in self.param_iter().zip(rhs.param_iter()) {
+      if l != r { return false }
     }
     true
   }
@@ -408,7 +406,7 @@ impl<T: Numeric> Tensor<T> {
       let mut data = t.detach().into_raw();
       data.sort_by(|a, b| b.partial_cmp(a).unwrap() );
       Self::new(&[k], data[..k].to_vec())
-    })
+    }).squeeze_only(0)
   }
 
   /// Collapse dimension using index of its greatest value
@@ -491,6 +489,13 @@ impl<T: Real> Tensor<T> {
       O::zero()
     })
   }
+
+  pub fn sample(&self) -> usize {
+    let mut rng = rand::thread_rng();
+    let dist = WeightedIndex::new(&self.cast::<f64>().into_raw()).unwrap();
+    dist.sample(&mut rng)
+  }
+
 
   pub fn trained(&self) -> Variable<T> {
     Variable::from_tensor(self.clone(), true)
@@ -672,7 +677,7 @@ mod tests {
     let x = Tensor::new(&[2,2,2], vec![1, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(x.at(&[0,0]), Tensor::vec(&[1, 2]));
     assert_eq!(x.at(&[1,1]), Tensor::vec(&[7, 8]));
-    assert_eq!(x.at(&[0,1,1]), Tensor::vec(&[4]));
+    assert_eq!(x.at(&[0,1,1]), Tensor::scalar(4));
     assert_eq!(x.at(&[0]), Tensor::new(&[2,2], vec![1, 2, 3, 4]));
   }
 
@@ -735,5 +740,8 @@ mod tests {
 
     let a: Tensor<usize> = Tensor::arrange(&[5,5], 0, 1).top_k(3, -1);
     assert_eq!(a, Tensor::new(&[5,3], vec![4, 3, 2, 9, 8, 7, 14, 13, 12, 19, 18, 17, 24, 23, 22]));
+
+    let a: Tensor<usize> = Tensor::arrange(&[5], 0, 1).top_k(3, -1);
+    assert_eq!(a, Tensor::new(&[3], vec![4, 3, 2]));
   }
 }

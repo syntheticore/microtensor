@@ -202,7 +202,7 @@ mod tests {
   #[test]
   fn mean() {
     let a = Tensor::new(&[3,2], vec![1., 2., 3., 4., 5., 6.]).trained();
-    assert_eq!(a.mean(0).tensor(), &Tensor::vec(&[3.5]));
+    assert_eq!(a.mean(0).tensor(), &Tensor::scalar(3.5));
     assert_eq!(a.mean(-1).tensor(), &Tensor::vec(&[1.5, 3.5, 5.5]));
   }
 
