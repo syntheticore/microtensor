@@ -9,7 +9,9 @@ use crate::{
 pub fn negative_index(i: isize, n: usize, start_behind: bool) -> usize {
   if i < 0 {
     let offset = if start_behind { 1 } else { 0 };
-    (n as isize + i + offset) as usize
+    let out = n as isize + i + offset;
+    assert!(out >= 0, "Negative index {i} into rank {n} shape");
+    out as usize
   } else {
     i as usize
   }

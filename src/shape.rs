@@ -69,6 +69,7 @@ impl Shape {
   }
 
   pub fn contiguous(&self) -> bool {
+    //XXX unsqeezed dims don't affect contiguity
     self.strides == Self::make_strides(&self.dims)
   }
 
@@ -132,6 +133,7 @@ impl Shape {
   // }
 
   pub fn range(&self, ranges: &[Range<isize>]) -> Self {
+    assert!(ranges.len() <= self.rank(), "Too many indices ({}) into {}", ranges.len(), self);
     let mut offset = 0;
     let mut dims = self.dims.clone();
     for (d, range) in ranges.iter().enumerate() {
@@ -140,7 +142,7 @@ impl Shape {
       let end = negative_index(range.end, dim, true);
       offset += self.strides[d] * start as isize;
       dims[d] = end - start;
-      assert!(end - start > 0, "Invalid range {:?}", ranges);
+      assert!(end - start > 0 && end <= dim, "Invalid range {:?} for {}", ranges, self);
     }
     Self { dims, strides: self.strides.clone(), offset: (self.offset as isize + offset) as usize }
   }
