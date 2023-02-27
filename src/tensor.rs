@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use std::fmt::Debug;
 
-use rand::{Rng, distributions::{Distribution, WeightedIndex}};
+use rand::{Rng, prelude::SliceRandom, distributions::{Distribution, WeightedIndex}};
 use num_traits::NumCast;
 use serde::{Serialize, Deserialize};
 
@@ -274,7 +274,7 @@ impl<T: Inner> Tensor<T> {
     self.zip(rhs, |(a, b)| a == b )
   }
 
-  pub fn split(&self, size: usize, dim: isize) -> Vec<Tensor<T>> {
+  pub fn split(&self, size: usize, dim: isize) -> Vec<Self> {
     let n = self.shape[dim] / size;
     let remainder = self.shape[dim] % size;
     let dim = negative_index(dim, self.rank(), false);
@@ -296,9 +296,21 @@ impl<T: Inner> Tensor<T> {
     }
   }
 
-  pub fn chunks(&self, n: usize, dim: isize) -> Vec<Tensor<T>> {
+  pub fn chunks(&self, n: usize, dim: isize) -> Vec<Self> {
     let size = self.shape[dim] / n;
     self.split(size, dim)
+  }
+
+  pub fn to_vec(&self, dim: isize) -> Vec<Self> {
+    self.iter(dim).collect()
+  }
+
+  pub fn shuffle(&self, dim: isize) -> Self {
+    self.unsqueeze(0).map(dim, |sub| {
+      let mut sub = sub.to_vec(0);
+      sub.shuffle(&mut rand::thread_rng());
+      Self::rows(&sub)
+    }).squeeze_only(0)
   }
 }
 
@@ -496,13 +508,12 @@ impl<T: Real> Tensor<T> {
     dist.sample(&mut rng)
   }
 
-
   pub fn trained(&self) -> Variable<T> {
     Variable::from_tensor(self.clone(), true)
   }
 
   pub fn tracked(&self) -> Variable<T> {
-    Variable::from(self)
+    Variable::from_tensor(self.clone(), false)
   }
 }
 
@@ -743,5 +754,12 @@ mod tests {
 
     let a: Tensor<usize> = Tensor::arrange(&[5], 0, 1).top_k(3, -1);
     assert_eq!(a, Tensor::new(&[3], vec![4, 3, 2]));
+  }
+
+  #[test]
+  fn shuffle() {
+    let a = Tensor::arrange(&[3,2,2], 0, 1);
+    let b = a.shuffle(1);
+    assert_eq!(b.shape.dims, a.shape.dims);
   }
 }

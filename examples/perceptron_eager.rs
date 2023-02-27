@@ -64,10 +64,10 @@ fn main() {
     let labels = (Tensor::rand(&[32]) * 10.0).cast::<u8>().one_hot(10);
 
     // Run the model, creating a fresh computation graph in the process
-    let output = model.run(&images.into());
+    let output = model.run(&images.tracked());
 
     // Compute loss
-    let loss = (&labels.into() - &output).sqr().mean(0);
+    let loss = (&labels.tracked() - &output).sqr().mean(0);
 
     // Compute gradients
     loss.backward();

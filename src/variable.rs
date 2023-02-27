@@ -147,17 +147,17 @@ impl<T: Real> PartialEq for Variable<T> {
   }
 }
 
-impl<T: Real> From<Tensor<T>> for Variable<T> {
-  fn from(tensor: Tensor<T>) -> Self {
-    Self::from_tensor(tensor, false)
-  }
-}
+// impl<T: Real> From<Tensor<T>> for Variable<T> {
+//   fn from(tensor: Tensor<T>) -> Self {
+//     Self::from_tensor(tensor, false)
+//   }
+// }
 
-impl<T: Real> From<&Tensor<T>> for Variable<T> {
-  fn from(tensor: &Tensor<T>) -> Self {
-    Self::from_tensor(tensor.clone(), false)
-  }
-}
+// impl<T: Real> From<&Tensor<T>> for Variable<T> {
+//   fn from(tensor: &Tensor<T>) -> Self {
+//     Self::from_tensor(tensor.clone(), false)
+//   }
+// }
 
 impl<T: Real + 'static> Variable<T> {
   pub(crate) fn from_tensor(array: Tensor<T>, trainable: bool) -> Self {
@@ -188,6 +188,7 @@ impl<T: Real + 'static> Variable<T> {
           data,
         },
         op: Some(op),
+        // op: grad.then_some(op),
         previous,
         trainable: false,
       }),
@@ -212,7 +213,8 @@ impl<T: Real + 'static> Variable<T> {
       Op::Unary(serde_traitobject::Box::new(op)),
       data,
       self.grad().is_some(),
-      vec![self.node.clone()])
+      vec![self.node.clone()],
+    )
   }
 
   pub fn binary_op(&self, op: impl BinaryOp<T> + 'static, rhs: &Self) -> Self {
