@@ -5,7 +5,7 @@
 
 Automatic differentiation for tensor operations.
 
-WIP: Don't use in production! Requires Rust nightly.
+Requires Rust nightly.
 
 ## Features
 
