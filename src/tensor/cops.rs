@@ -15,8 +15,8 @@ impl<T: Numeric> Cops<T> for Tensor<T> {
     let cols_l = lhs.shape[-1];
     let cols_r = rhs.shape[-1];
 
-    let data_l = lhs.data.borrow();
-    let data_r = rhs.data.borrow();
+    let data_l = lhs.raw();
+    let data_r = rhs.raw();
     let offset_l = lhs.shape.offset;
     let offset_r = rhs.shape.offset;
 

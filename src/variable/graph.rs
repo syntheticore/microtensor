@@ -1,12 +1,12 @@
 use std::io;
 use std::fs;
-use std::rc::Rc;
 use std::collections::HashMap;
 
 use itertools::Itertools;
 use serde::{Serialize, Deserialize, de::DeserializeOwned};
 
 use crate::{
+  internal::*,
   scalar::Real,
   variable::{ Variable, Node, NodeCell, Op }
 };
@@ -39,7 +39,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     }
   }
 
-  fn history(&self) -> Vec<Rc<Node<T>>> {
+  fn history(&self) -> Vec<RcT<Node<T>>> {
     let mut history = self.outputs
       .iter()
       .map(|out| out.history() )
@@ -60,7 +60,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
   pub fn load(filename: &str) -> io::Result<Self> {
     let bytes = fs::read(filename)?;
     let tensor_dump: GraphDump<T> = postcard::from_bytes(&bytes).unwrap();
-    let mut nodes: HashMap<usize, Rc<Node<T>>> = HashMap::new();
+    let mut nodes: HashMap<usize, RcT<Node<T>>> = HashMap::new();
     for dump in tensor_dump.history {
       let node = Node {
         id: dump.id,
@@ -69,7 +69,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         previous: dump.previous.iter().map(|id| nodes[id].clone() ).collect(),
         trainable: dump.trainable,
       };
-      nodes.insert(node.id, Rc::new(node));
+      nodes.insert(node.id, RcT::new(node));
     }
     let map_tensor = |dump: VariableDump| Variable {
       node: nodes[&dump.node].clone(),

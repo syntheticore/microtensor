@@ -1,8 +1,33 @@
+#[cfg(not(feature = "threading"))]
+use std::{
+  rc::Rc,
+  cell::RefCell,
+};
+
+#[cfg(feature = "threading")]
+use {
+  std::sync::Arc,
+  parking_lot::Mutex,
+};
+
 use rand::Rng;
 
 use crate::{
   scalar::Real,
 };
+
+
+#[cfg(not(feature = "threading"))]
+pub type RcT<T> = Rc<T>;
+
+#[cfg(feature = "threading")]
+pub type RcT<T> = Arc<T>;
+
+#[cfg(not(feature = "threading"))]
+pub type RcCell<T> = Rc<RefCell<T>>;
+
+#[cfg(feature = "threading")]
+pub type RcCell<T> = Arc<Mutex<T>>;
 
 
 #[inline]

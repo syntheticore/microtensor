@@ -1,10 +1,20 @@
-use std::rc::Rc;
-use std::cell::{Ref, RefMut, RefCell};
+#[cfg(feature = "threading")]
+use {
+  std::sync::Arc,
+  parking_lot::{ Mutex, MutexGuard },
+};
+
+#[cfg(not(feature = "threading"))]
+use std::{
+  rc::Rc,
+  cell::{ Ref, RefMut, RefCell },
+};
+
 use std::fmt::Debug;
 
-use rand::{Rng, prelude::SliceRandom, distributions::{Distribution, WeightedIndex}};
+use rand::{Rng, prelude::SliceRandom, distributions::{ Distribution, WeightedIndex }};
 use num_traits::NumCast;
-use serde::{Serialize, Deserialize};
+use serde::{ Serialize, Deserialize };
 
 mod cops;
 mod lops;
@@ -30,7 +40,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tensor<T: Inner> {
   shape: Shape,
-  data: Rc<RefCell<Vec<T>>>,
+  data: RcCell<Vec<T>>,
 }
 
 impl<T: Inner> BaseHops<T> for Tensor<T> {}
@@ -50,7 +60,13 @@ impl<T: Inner> Tensor<T> {
   pub fn from_shape(shape: Shape, data: Vec<T>) -> Self {
     assert_eq!(shape.size(), data.len(),
       "{} doesn't match data length {}", shape, data.len());
-    Self { shape, data: Rc::new(RefCell::new(data)) }
+
+    #[cfg(not(feature = "threading"))]
+    let this = Self { shape, data: Rc::new(RefCell::new(data)) };
+
+    #[cfg(feature = "threading")]
+    let this = Self { shape, data: Arc::new(Mutex::new(data)) };
+    this
   }
 
   pub fn new(shape: &[usize], data: Vec<T>) -> Self {
@@ -96,16 +112,35 @@ impl<T: Inner> Tensor<T> {
   //   Self::new(&dims, data)
   // }
 
+  #[cfg(not(feature = "threading"))]
   pub fn raw(&self) -> Ref<Vec<T>> {
     self.data.borrow()
   }
 
+  #[cfg(feature = "threading")]
+  pub fn raw(&self) -> MutexGuard<Vec<T>> {
+    // self.data.lock_arc()
+    self.data.lock()
+  }
+
+  #[cfg(not(feature = "threading"))]
   pub fn raw_mut(&self) -> RefMut<Vec<T>> {
     self.data.borrow_mut()
   }
 
+  #[cfg(feature = "threading")]
+  pub fn raw_mut(&self) -> MutexGuard<Vec<T>> {
+    self.data.lock()
+  }
+
+  #[cfg(not(feature = "threading"))]
   pub fn into_raw(self) -> Vec<T> {
     Rc::unwrap_or_clone(self.data).into_inner()
+  }
+
+  #[cfg(feature = "threading")]
+  pub fn into_raw(self) -> Vec<T> {
+    self.data.lock().clone()
   }
 
   pub fn size(&self) -> usize {
@@ -360,13 +395,13 @@ impl<T: Numeric> Tensor<T> {
     assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not feed {} tensor with {} tensor", self.shape, other.shape);
     // Avoid clashing borrow when tensors share storage
-    let other = if Rc::ptr_eq(&self.data, &other.data) {
+    let other = if RcT::ptr_eq(&self.data, &other.data) {
       other.detach()
     } else {
       other.clone()
     };
-    let mut data = self.data.borrow_mut();
-    let other_data = other.data.borrow();
+    let mut data = self.raw_mut();
+    let other_data = other.raw();
     for (i, j) in self.shape.iter().zip(other.shape.iter()) {
       data[i] = other_data[j];
     }
@@ -657,14 +692,19 @@ impl<T: Inner> Iterator for TensorSliceIterator<'_, T> {
 /// Iterate a [Tensor]'s individual parameters.
 
 pub struct TensorIterator<'a, T: Inner> {
+  #[cfg(not(feature = "threading"))]
   data: Ref<'a, Vec<T>>,
+
+  #[cfg(feature = "threading")]
+  data: MutexGuard<'a, Vec<T>>,
+
   shape_iter: Box<dyn Iterator<Item=usize> + 'a>,
 }
 
 impl<'a, T: Inner> TensorIterator<'a, T> {
   fn new(tensor: &'a Tensor<T>) -> Self {
     Self {
-      data: tensor.data.borrow(),
+      data: tensor.raw(),
       shape_iter: tensor.shape.iter(),
     }
   }

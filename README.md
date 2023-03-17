@@ -63,7 +63,6 @@ let b = Tensor::ones(&[2]);
 let c = &a - b.unsqueeze(-1) + 1.;
 
 assert_eq!(a, c);
-
 ```
 
 Generic return types:
@@ -73,11 +72,17 @@ use microtensor::{prelude::*, Tensor};
 let t = Tensor::<f32>::randn(&[16]);
 let _a: u8  = t.argmax(0).item();
 let _b: u16 = t.argmax(0).item(); // argmax will produce a Tensor<u16> here
-
 ```
+
+## Optional features
+
+Some features can be toggled in your `Cargo.toml`.
+
+- `unsafe` *(default)* — Accelerated matrix math using [matrixmultiply].
+- `threading` *(default)* — Thread safety & multi-threaded operation over batch dimensions.
 
 ### More examples
 Check the `/examples` folder for more example code.
 
 ## License
-  MIT
+MIT

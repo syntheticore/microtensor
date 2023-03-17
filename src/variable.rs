@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::fmt::Debug;
@@ -11,6 +10,7 @@ mod graph;
 pub use graph::Graph;
 
 use crate::{
+  internal::*,
   tensor::Tensor,
   scalar::Real,
   ops::{ BaseOps, NumericOps, BaseHops, RealHops },
@@ -47,7 +47,7 @@ struct Node<T: Real + 'static> {
   pub id: usize,
   cell: NodeCell<T>,
   op: Option<Op<T>>,
-  previous: Vec<Rc<Self>>,
+  previous: Vec<RcT<Self>>,
   trainable: bool,
 }
 
@@ -127,7 +127,7 @@ impl<T: Real> Node<T> {
 
 #[derive(Debug, Clone)]
 pub struct Variable<T: Real + 'static> {
-  node: Rc<Node<T>>,
+  node: RcT<Node<T>>,
 }
 
 impl<T: Real> BaseHops<T> for Variable<T> {}
@@ -162,7 +162,7 @@ impl<T: Real> PartialEq for Variable<T> {
 impl<T: Real + 'static> Variable<T> {
   pub(crate) fn from_tensor(array: Tensor<T>, trainable: bool) -> Self {
     Self {
-      node: Rc::new(Node {
+      node: RcT::new(Node {
         id: make_id(),
         cell: NodeCell {
           grad: if trainable {
@@ -179,9 +179,9 @@ impl<T: Real + 'static> Variable<T> {
     }
   }
 
-  fn operation(op: Op<T>, data: Tensor<T>, grad: bool, previous: Vec<Rc<Node<T>>>) -> Self {
+  fn operation(op: Op<T>, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
     Self {
-      node: Rc::new(Node {
+        node: RcT::new(Node {
         id: make_id(),
         cell: NodeCell {
           grad: grad.then(|| Tensor::zeros(&data.shape().dims) ),
@@ -271,13 +271,13 @@ impl<T: Real + 'static> Variable<T> {
     }
   }
 
-  fn history(&self) -> Vec<Rc<Node<T>>> {
+  fn history(&self) -> Vec<RcT<Node<T>>> {
     let mut history = vec![];
     Self::history_recurse(&self.node, &mut history, &mut HashSet::new());
     history
   }
 
-  fn history_recurse(node: &Rc<Node<T>>, history: &mut Vec<Rc<Node<T>>>, visited: &mut HashSet<usize>) {
+  fn history_recurse(node: &RcT<Node<T>>, history: &mut Vec<RcT<Node<T>>>, visited: &mut HashSet<usize>) {
     if visited.contains(&node.id) { return }
     visited.insert(node.id);
     for prev in &node.previous {
