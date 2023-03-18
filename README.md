@@ -78,7 +78,7 @@ let _b: u16 = t.argmax(0).item(); // argmax will produce a Tensor<u16> here
 
 Some features can be toggled in your `Cargo.toml`.
 
-- `unsafe` *(default)* — Accelerated matrix math using [matrixmultiply].
+- `unsafe` *(default)* — Accelerated matrix math using [matrixmultiply] crate.
 - `threading` *(default)* — Thread safety & multi-threaded operation over batch dimensions.
 
 ### More examples

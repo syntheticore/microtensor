@@ -119,8 +119,17 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let iter = lhs.iter(-3).zip(rhs.iter(-3));
 
     #[cfg(feature = "threading")]
-    let iter = iter.par_bridge();
+    let data = {
+      let iter = iter.enumerate().par_bridge();
+      let mut data: Vec<_> = iter
+        .map(|(i, (ml, mr))| (i, ml.matmul(&mr)) )
+        .collect();
+      // Restore original order
+      data.sort_by_key(|(i, _)| *i );
+      data.into_iter().flat_map(|(_, m)| m ).collect()
+    };
 
+    #[cfg(not(feature = "threading"))]
     let data = iter
       .flat_map(|(ml, mr)| ml.matmul(&mr) )
       .collect();
