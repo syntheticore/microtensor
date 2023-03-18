@@ -1,5 +1,11 @@
 use std::ops::Range;
 
+#[cfg(feature = "threading")]
+use rayon::{
+  iter::ParallelBridge,
+  prelude::ParallelIterator,
+};
+
 use crate::{
   internal::*,
   shape::Shape,
@@ -110,7 +116,12 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let rhs = rhs.broadcast(&lhs.shape, Some(-2));
 
     // Batched multiplication
-    let data = lhs.iter(-3).zip(rhs.iter(-3))
+    let iter = lhs.iter(-3).zip(rhs.iter(-3));
+
+    #[cfg(feature = "threading")]
+    let iter = iter.par_bridge();
+
+    let data = iter
       .flat_map(|(ml, mr)| ml.matmul(&mr) )
       .collect();
 
