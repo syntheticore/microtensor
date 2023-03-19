@@ -19,9 +19,7 @@ serde = { version = "1.0.145", features = ["derive", "rc"] }
 serde_traitobject = "0.2.8"
 postcard = { version = "1.0.2", features = ["alloc"] }
 
-rayon = { version = "1.5.3", optional = true }
 parking_lot = { version = "0.12.1", features = ["serde"], optional = true }
-
 matrixmultiply = { version = "0.3.2", features = ["threading"], optional = true  }
 
 [features]
@@ -29,12 +27,7 @@ default = [
   "threading",
   "unsafe",
 ]
-
-threading = [
-  "dep:rayon",
-  "dep:parking_lot",
-]
-
+threading = ["dep:parking_lot"]
 unsafe = ["dep:matrixmultiply"]
 
 [profile.dev]

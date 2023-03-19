@@ -7,7 +7,7 @@ use std::{
 #[cfg(feature = "threading")]
 use {
   std::sync::Arc,
-  parking_lot::Mutex,
+  parking_lot::RwLock,
 };
 
 use rand::Rng;
@@ -27,7 +27,7 @@ pub type RcT<T> = Arc<T>;
 pub type RcCell<T> = Rc<RefCell<T>>;
 
 #[cfg(feature = "threading")]
-pub type RcCell<T> = Arc<Mutex<T>>;
+pub type RcCell<T> = Arc<RwLock<T>>;
 
 
 #[inline]

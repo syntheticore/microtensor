@@ -1,7 +1,7 @@
 #[cfg(feature = "threading")]
 use {
   std::sync::Arc,
-  parking_lot::{ Mutex, MutexGuard },
+  parking_lot::{ RwLock, RwLockReadGuard, RwLockWriteGuard },
 };
 
 #[cfg(not(feature = "threading"))]
@@ -65,7 +65,7 @@ impl<T: Inner> Tensor<T> {
     let this = Self { shape, data: Rc::new(RefCell::new(data)) };
 
     #[cfg(feature = "threading")]
-    let this = Self { shape, data: Arc::new(Mutex::new(data)) };
+    let this = Self { shape, data: Arc::new(RwLock::new(data)) };
     this
   }
 
@@ -118,9 +118,8 @@ impl<T: Inner> Tensor<T> {
   }
 
   #[cfg(feature = "threading")]
-  pub fn raw(&self) -> MutexGuard<Vec<T>> {
-    // self.data.lock_arc()
-    self.data.lock()
+  pub fn raw(&self) -> RwLockReadGuard<Vec<T>> {
+    self.data.read()
   }
 
   #[cfg(not(feature = "threading"))]
@@ -129,8 +128,8 @@ impl<T: Inner> Tensor<T> {
   }
 
   #[cfg(feature = "threading")]
-  pub fn raw_mut(&self) -> MutexGuard<Vec<T>> {
-    self.data.lock()
+  pub fn raw_mut(&self) -> RwLockWriteGuard<Vec<T>> {
+    self.data.write()
   }
 
   #[cfg(not(feature = "threading"))]
@@ -140,7 +139,7 @@ impl<T: Inner> Tensor<T> {
 
   #[cfg(feature = "threading")]
   pub fn into_raw(self) -> Vec<T> {
-    self.data.lock().clone()
+    self.data.read().clone()
   }
 
   pub fn size(&self) -> usize {
@@ -696,7 +695,7 @@ pub struct TensorIterator<'a, T: Inner> {
   data: Ref<'a, Vec<T>>,
 
   #[cfg(feature = "threading")]
-  data: MutexGuard<'a, Vec<T>>,
+  data: RwLockReadGuard<'a, Vec<T>>,
 
   shape_iter: Box<dyn Iterator<Item=usize> + 'a>,
 }
