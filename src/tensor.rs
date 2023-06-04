@@ -12,7 +12,7 @@ use std::{
 
 use std::fmt::Debug;
 
-use rand::{Rng, prelude::SliceRandom, distributions::{ Distribution, WeightedIndex }};
+use rand::{ Rng, prelude::SliceRandom, distributions::{ Distribution, WeightedIndex }};
 use num_traits::NumCast;
 use serde::{ Serialize, Deserialize };
 
@@ -150,11 +150,23 @@ impl<T: Inner> Tensor<T> {
     self.shape.rank()
   }
 
+  pub fn dim(&self, i: isize) -> usize {
+    self.shape()[i]
+  }
+
   pub fn contiguous(&self) -> Self {
     if self.shape.contiguous() {
       self.clone()
     } else {
-      self.vectorize(|a| a )
+      self.detach()
+    }
+  }
+
+  pub fn complete(&self) -> Self {
+    if self.shape.contiguous() && (self.size() == self.raw().len()) {
+      self.clone()
+    } else {
+      self.detach()
     }
   }
 
@@ -212,7 +224,7 @@ impl<T: Inner> Tensor<T> {
   {
     let dim = negative_index(dim, self.shape.rank(), false);
     let data = self.unsqueeze(0).iter(dim as isize)
-      .flat_map(|t| cb(t).into_raw() )
+      .flat_map(|t| cb(t).complete().into_raw() )
       .collect();
     let mut dims = self.shape.dims.clone();
     dims[dim] = 1;
@@ -255,7 +267,7 @@ impl<T: Inner> Tensor<T> {
           dims = Some(t.shape.dims.clone());
         }
       })
-      .flat_map(|t| t.into_raw() )
+      .flat_map(|t| t.complete().into_raw() )
       .collect();
     let dims = vec![self.shape.dims[..=dim].to_vec(), dims.unwrap()].concat();
     Tensor::new(&dims, data)
@@ -348,6 +360,8 @@ impl<T: Inner> Tensor<T> {
   }
 }
 
+// Numeric
+
 impl<T: Numeric> std::iter::Sum for Tensor<T> {
   fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
     iter.fold(Self::zeros(&[1]), |acc, a| acc.add(&a) )
@@ -399,6 +413,7 @@ impl<T: Numeric> Tensor<T> {
     } else {
       other.clone()
     };
+    //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();
     for (i, j) in self.shape.iter().zip(other.shape.iter()) {
@@ -478,6 +493,10 @@ impl<T: Numeric> Tensor<T> {
   pub fn cast<I: Numeric>(&self) -> Tensor<I> {
     self.vectorize(|a| I::from(a).unwrap() )
   }
+
+  pub fn bool(&self, threshold: T) -> Tensor<bool> {
+    self.vectorize(|a| a > threshold )
+  }
 }
 
 impl<T: Numeric> std::ops::AddAssign for Tensor<T> {
@@ -503,6 +522,8 @@ impl<T: Numeric> std::ops::DivAssign for Tensor<T> {
     self.feed(&self.div(&rhs));
   }
 }
+
+// Real
 
 impl<T: Real> Tensor<T> {
   pub fn rand(shape: &[usize]) -> Self {
@@ -551,15 +572,19 @@ impl<T: Real> Tensor<T> {
   }
 }
 
+// Integer
+
 impl<T: Integer> Tensor<T> {
   pub fn accuracy<O: Real>(&self, labels: &Self) -> O {
     self
     .equal(&labels)
     .numeric::<O>()
     .sum(0)
-    .item() / O::from(labels.shape()[0]).unwrap()
+    .item() / O::from(labels.dim(0)).unwrap()
   }
 }
+
+// Unsigned Integer
 
 impl<T: Integer + Unsigned> Tensor<T> {
   pub fn one_hot<O: Numeric>(&self, size: usize) -> Tensor<O> {
@@ -569,6 +594,10 @@ impl<T: Integer + Unsigned> Tensor<T> {
       hot[i] = O::one();
       hot
     })
+  }
+
+  pub fn multi_hot<O: Numeric>(&self, size: usize) -> Tensor<O> {
+    self.one_hot(size).sum_over(-2)
   }
 
   pub fn confusion(&self, labels: &Self) -> Self {
@@ -585,11 +614,15 @@ impl<T: Integer + Unsigned> Tensor<T> {
   }
 }
 
+// Signed
+
 impl<T: Signed> Tensor<T> {
   pub fn signum(&self) -> Self {
     self.vectorize(|a| a.signum() )
   }
 }
+
+// Bool
 
 impl Tensor<bool> {
   pub fn numeric<O: Numeric>(&self) -> Tensor<O> {
@@ -633,6 +666,8 @@ impl std::ops::Not for Tensor<bool> {
     self.vectorize(|a| !a )
   }
 }
+
+// Display
 
 impl<T: Inner> std::fmt::Display for Tensor<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

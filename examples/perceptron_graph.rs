@@ -16,7 +16,7 @@
 use microtensor::{prelude::*, Tensor, Variable};
 
 fn dense_layer(input: &Variable<f32>, size: usize) -> Variable<f32> {
-  let weights = (Tensor::randn(&[input.shape()[-1], size]) / size as f32).trained();
+  let weights = (Tensor::randn(&[input.dim(-1), size]) / size as f32).trained();
   let bias = Tensor::zeros(&[size]).trained();
   input.mm(&weights) + bias
 }
