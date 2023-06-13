@@ -37,9 +37,10 @@ impl<T: Numeric> Cops<T> for Tensor<T> {
 
 macro_rules! matmul {
   ($T:ident, $method:ident) => {
+
+    #[cfg(feature = "unsafe")]
     impl Cops<$T> for Tensor<$T> {
 
-      #[cfg(feature = "unsafe")]
       fn matmul(&self, rhs: &Self) -> Vec<$T> {
         let rows_l = self.shape[-2];
         let cols_l = self.shape[-1];

@@ -12,7 +12,7 @@ use std::{
 
 use std::fmt::Debug;
 
-use rand::{Rng, prelude::SliceRandom, distributions::{ Distribution, WeightedIndex }};
+use rand::{ Rng, prelude::SliceRandom, distributions::{ Distribution, WeightedIndex }};
 use num_traits::NumCast;
 use serde::{ Serialize, Deserialize };
 
@@ -151,8 +151,20 @@ impl<T: Inner> Tensor<T> {
     self.shape.rank()
   }
 
+  pub fn dim(&self, i: isize) -> usize {
+    self.shape()[i]
+  }
+
   pub fn contiguous(&self) -> Self {
     if self.shape.contiguous() {
+      self.clone()
+    } else {
+      self.detach()
+    }
+  }
+
+  pub fn complete(&self) -> Self {
+    if self.shape.contiguous() && (self.size() == self.raw().len()) {
       self.clone()
     } else {
       self.detach()
@@ -213,7 +225,7 @@ impl<T: Inner> Tensor<T> {
   {
     let dim = negative_index(dim, self.shape.rank(), false);
     let data = self.unsqueeze(0).iter(dim as isize)
-      .flat_map(|t| cb(t).contiguous().into_raw() )
+      .flat_map(|t| cb(t).complete().into_raw() )
       .collect();
     let mut dims = self.shape.dims.clone();
     dims[dim] = 1;
@@ -256,7 +268,7 @@ impl<T: Inner> Tensor<T> {
           dims = Some(t.shape.dims.clone());
         }
       })
-      .flat_map(|t| t.contiguous().into_raw() )
+      .flat_map(|t| t.complete().into_raw() )
       .collect();
     let dims = vec![self.shape.dims[..=dim].to_vec(), dims.unwrap()].concat();
     Tensor::new(&dims, data)
@@ -349,6 +361,8 @@ impl<T: Inner> Tensor<T> {
   }
 }
 
+// Numeric
+
 impl<T: Numeric> Tensor<T> {
   pub fn ones(shape: &[usize]) -> Self {
     Self::fill(shape, T::one())
@@ -389,6 +403,7 @@ impl<T: Numeric> Tensor<T> {
     debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not feed {} tensor with {} tensor", self.shape, other.shape);
     if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
+    //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();
     for (i, j) in self.shape.iter().zip(other.shape.iter()) {
@@ -468,6 +483,10 @@ impl<T: Numeric> Tensor<T> {
   pub fn cast<I: Numeric>(&self) -> Tensor<I> {
     self.vectorize(|a| I::from(a).unwrap() )
   }
+
+  pub fn bool(&self, threshold: T) -> Tensor<bool> {
+    self.vectorize(|a| a > threshold )
+  }
 }
 
 impl<T: Numeric> std::ops::AddAssign for Tensor<T> {
@@ -499,6 +518,8 @@ impl<T: Numeric> std::iter::Sum for Tensor<T> {
     iter.fold(Self::zeros(&[1]), |acc, a| acc.add(&a) )
   }
 }
+
+// Real
 
 impl<T: Real> Tensor<T> {
   pub fn rand(shape: &[usize]) -> Self {
@@ -547,15 +568,19 @@ impl<T: Real> Tensor<T> {
   }
 }
 
+// Integer
+
 impl<T: Integer> Tensor<T> {
-  pub fn accuracy<O: Real>(&self, labels: &Self) -> O {
+  pub fn accuracy<O: Real>(&self, labels: &Self, num_classes: usize) -> O {
     self
     .equal(&labels)
     .numeric::<O>()
     .sum(0)
-    .item() / O::from(labels.shape()[0]).unwrap()
+    .item() / O::from(labels.dim(0) * num_classes).unwrap()
   }
 }
+
+// Unsigned Integer
 
 impl<T: Integer + Unsigned> Tensor<T> {
   pub fn one_hot<O: Numeric>(&self, size: usize) -> Tensor<O> {
@@ -565,6 +590,10 @@ impl<T: Integer + Unsigned> Tensor<T> {
       hot[i] = O::one();
       hot
     })
+  }
+
+  pub fn multi_hot<O: Numeric>(&self, size: usize) -> Tensor<O> {
+    self.one_hot(size).sum_over(-2).squeeze(&[-2])
   }
 
   pub fn confusion(&self, labels: &Self) -> Self {
@@ -581,11 +610,15 @@ impl<T: Integer + Unsigned> Tensor<T> {
   }
 }
 
+// Signed
+
 impl<T: Signed> Tensor<T> {
   pub fn signum(&self) -> Self {
     self.vectorize(|a| a.signum() )
   }
 }
+
+// Bool
 
 impl Tensor<bool> {
   pub fn numeric<O: Numeric>(&self) -> Tensor<O> {
@@ -629,6 +662,8 @@ impl std::ops::Not for Tensor<bool> {
     self.vectorize(|a| !a )
   }
 }
+
+// Display
 
 impl<T: Inner> std::fmt::Display for Tensor<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

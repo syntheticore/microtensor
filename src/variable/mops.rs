@@ -416,8 +416,8 @@ impl<T: Real> BinaryOp<T> for Concat {
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
   {
-    let size_l = lhs.shape()[self.dim];
-    let size_r = rhs.shape()[self.dim];
+    let size_l = lhs.dim(self.dim);
+    let size_r = rhs.dim(self.dim);
     let dim = negative_index(self.dim, grad.rank(), false);
 
     let mut ranges_l = vec![0..-1; dim + 1];

@@ -1,4 +1,5 @@
 Cargo.lock
+.DS_Store
 target
 *.nn
 *.tk
