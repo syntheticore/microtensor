@@ -575,12 +575,12 @@ impl<T: Real> Tensor<T> {
 // Integer
 
 impl<T: Integer> Tensor<T> {
-  pub fn accuracy<O: Real>(&self, labels: &Self) -> O {
+  pub fn accuracy<O: Real>(&self, labels: &Self, num_classes: usize) -> O {
     self
     .equal(&labels)
     .numeric::<O>()
     .sum(0)
-    .item() / O::from(labels.dim(0)).unwrap()
+    .item() / O::from(labels.dim(0) * num_classes).unwrap()
   }
 }
 
@@ -597,7 +597,7 @@ impl<T: Integer + Unsigned> Tensor<T> {
   }
 
   pub fn multi_hot<O: Numeric>(&self, size: usize) -> Tensor<O> {
-    self.one_hot(size).sum_over(-2)
+    self.one_hot(size).sum_over(-2).squeeze(&[-2])
   }
 
   pub fn confusion(&self, labels: &Self) -> Self {
