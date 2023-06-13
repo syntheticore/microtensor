@@ -74,15 +74,15 @@ let _a: u8  = t.argmax(0).item();
 let _b: u16 = t.argmax(0).item(); // argmax will produce a Tensor<u16> here
 ```
 
+### More examples
+Check the `/examples` folder for more example code.
+
 ## Optional features
 
 Some features can be toggled in your `Cargo.toml`.
 
 - `unsafe` *(default)* — Accelerated matrix math using [matrixmultiply] crate.
 - `threading` *(default)* — Thread safety & multi-threaded operation over batch dimensions.
-
-### More examples
-Check the `/examples` folder for more example code.
 
 ## License
 MIT

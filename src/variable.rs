@@ -130,6 +130,8 @@ pub struct Variable<T: Real + 'static> {
   node: RcT<Node<T>>,
 }
 
+//XXX disallow clone for trained vars
+
 impl<T: Real> BaseHops<T> for Variable<T> {}
 impl<T: Real> RealHops<T> for Variable<T> {}
 

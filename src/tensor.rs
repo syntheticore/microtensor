@@ -31,7 +31,7 @@ use crate::{
 /// Multidimensional array.
 ///
 /// Tensors may contain any type that satisfies [Inner], but
-/// additional methods are available for [Numeric], [Real]
+/// additional methods are available for [Numeric], [Real], [Integer], [Signed], [Unsigned]
 /// and [boolean](bool) inner types.
 ///
 /// [Real] tensor types can be wrapped in a [Variable] by
@@ -58,7 +58,7 @@ impl<T: Inner> PartialEq for Tensor<T> {
 
 impl<T: Inner> Tensor<T> {
   pub fn from_shape(shape: Shape, data: Vec<T>) -> Self {
-    assert_eq!(shape.size(), data.len(),
+    debug_assert!(shape.size_raw() == data.len(),
       "{} doesn't match data length {}", shape, data.len());
 
     #[cfg(not(feature = "threading"))]
@@ -66,6 +66,7 @@ impl<T: Inner> Tensor<T> {
 
     #[cfg(feature = "threading")]
     let this = Self { shape, data: Arc::new(RwLock::new(data)) };
+
     this
   }
 
@@ -81,7 +82,7 @@ impl<T: Inner> Tensor<T> {
     Self::new(&[vec.len()], vec)
   }
 
-  pub fn fill(shape: &[usize], filler: T) -> Self { //XXX store one value only
+  pub fn fill(shape: &[usize], filler: T) -> Self {
     Self::new(shape, vec![filler; shape.iter().product()])
   }
 
@@ -154,7 +155,7 @@ impl<T: Inner> Tensor<T> {
     if self.shape.contiguous() {
       self.clone()
     } else {
-      self.vectorize(|a| a )
+      self.detach()
     }
   }
 
@@ -212,7 +213,7 @@ impl<T: Inner> Tensor<T> {
   {
     let dim = negative_index(dim, self.shape.rank(), false);
     let data = self.unsqueeze(0).iter(dim as isize)
-      .flat_map(|t| cb(t).into_raw() )
+      .flat_map(|t| cb(t).contiguous().into_raw() )
       .collect();
     let mut dims = self.shape.dims.clone();
     dims[dim] = 1;
@@ -228,7 +229,7 @@ impl<T: Inner> Tensor<T> {
     let data: Vec<O> = self.param_iter()
       .map(cb)
       .inspect(|vec| {
-        assert!(len == -1 || vec.len() == len as usize,
+        debug_assert!(len == -1 || vec.len() == len as usize,
           "Expansion must produce arrays of equal size");
         len = vec.len() as isize;
       })
@@ -249,13 +250,13 @@ impl<T: Inner> Tensor<T> {
     let data = self.iter(dim as isize)
       .map(|t| cb(t) )
       .inspect(|t| {
-        assert!(dims.is_none() || &t.shape.dims == dims.as_ref().unwrap(),
+        debug_assert!(dims.is_none() || &t.shape.dims == dims.as_ref().unwrap(),
           "Map must produce tensors of equal dimensions");
         if !dims.is_some() {
           dims = Some(t.shape.dims.clone());
         }
       })
-      .flat_map(|t| t.into_raw() )
+      .flat_map(|t| t.contiguous().into_raw() )
       .collect();
     let dims = vec![self.shape.dims[..=dim].to_vec(), dims.unwrap()].concat();
     Tensor::new(&dims, data)
@@ -276,7 +277,7 @@ impl<T: Inner> Tensor<T> {
   // }
 
   pub fn item(&self) -> T {
-    assert!(self.shape.squeeze_all().rank() == 0,
+    debug_assert!(self.shape.squeeze_all().rank() == 0,
       "Can't extract item from non-scalar {}", self.shape);
     self.raw()[self.shape.offset].clone()
   }
@@ -348,19 +349,13 @@ impl<T: Inner> Tensor<T> {
   }
 }
 
-impl<T: Numeric> std::iter::Sum for Tensor<T> {
-  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
-    iter.fold(Self::zeros(&[1]), |acc, a| acc.add(&a) )
-  }
-}
-
 impl<T: Numeric> Tensor<T> {
   pub fn ones(shape: &[usize]) -> Self {
-    Self::new(shape, vec![T::one(); shape.iter().product()])
+    Self::fill(shape, T::one())
   }
 
-  pub fn zeros(shape: &[usize]) -> Self { //XXX should only store one zero + strides
-    Self::new(shape, vec![T::zero(); shape.iter().product()])
+  pub fn zeros(shape: &[usize]) -> Self {
+    Self::fill(shape, T::zero())
   }
 
   pub fn arrange(shape: &[usize], start: T, step: T) -> Self {
@@ -391,14 +386,9 @@ impl<T: Numeric> Tensor<T> {
   }
 
   pub fn feed(&self, other: &Self) {
-    assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
+    debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not feed {} tensor with {} tensor", self.shape, other.shape);
-    // Avoid clashing borrow when tensors share storage
-    let other = if RcT::ptr_eq(&self.data, &other.data) {
-      other.detach()
-    } else {
-      other.clone()
-    };
+    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
     let mut data = self.raw_mut();
     let other_data = other.raw();
     for (i, j) in self.shape.iter().zip(other.shape.iter()) {
@@ -504,6 +494,12 @@ impl<T: Numeric> std::ops::DivAssign for Tensor<T> {
   }
 }
 
+impl<T: Numeric> std::iter::Sum for Tensor<T> {
+  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
+    iter.fold(Self::zeros(&[1]), |acc, a| acc.add(&a) )
+  }
+}
+
 impl<T: Real> Tensor<T> {
   pub fn rand(shape: &[usize]) -> Self {
     let mut rng = rand::thread_rng();
@@ -543,7 +539,7 @@ impl<T: Real> Tensor<T> {
   }
 
   pub fn trained(&self) -> Variable<T> {
-    Variable::from_tensor(self.clone(), true)
+    Variable::from_tensor(self.detach(), true)
   }
 
   pub fn tracked(&self) -> Variable<T> {
@@ -779,6 +775,7 @@ mod tests {
   fn map() {
     let a: Tensor<usize> = Tensor::<usize>::ones(&[3,2]).map(0, |_| Tensor::ones(&[4,4]) );
     assert_eq!(a.shape.dims, vec![3,4,4]);
+
     let a: Tensor<usize> = Tensor::<usize>::ones(&[3,2]).map(-1, |_| Tensor::ones(&[4,4]) );
     assert_eq!(a.shape.dims, vec![3,2,4,4]);
   }

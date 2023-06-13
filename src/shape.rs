@@ -64,6 +64,12 @@ impl Shape {
     self.dims.iter().product()
   }
 
+  pub fn size_raw(&self) -> usize {
+    self.dims.iter().zip(&self.strides)
+      .map(|(d, s)| if *s == 0 { 1 } else { *d } )
+      .product()
+  }
+
   pub fn rank(&self) -> usize {
     self.dims.len()
   }
@@ -82,7 +88,7 @@ impl Shape {
     if off_bounds { or } else { self[idx] }
   }
 
-  pub(crate) fn index(&self, indices: &[usize]) -> usize {
+  pub fn index(&self, indices: &[usize]) -> usize {
     assert!(indices.len() <= self.rank());
     // Append missing dimensions as zero
     (indices.iter()
@@ -106,7 +112,7 @@ impl Shape {
   }
 
   pub fn view(&self, shape: &[usize]) -> Self { //XXX allow -1 to keep dimension
-    assert!(self.contiguous()); //XXX
+    debug_assert!(self.contiguous()); //XXX
     // Calculate size of placeholders
     let dims: Vec<usize> = shape.iter().enumerate().map(|(i, &n)| if n == 0 {
       let product: usize =
@@ -229,7 +235,7 @@ impl Shape {
         .chain(std::iter::repeat(&1)))
       .enumerate()
       .inspect(|(i, (&a, &b))|
-        assert!(a == b || a == 1 || b == 1 || rank - 1 - i >= ignore,
+        debug_assert!(a == b || a == 1 || b == 1 || rank - 1 - i >= ignore,
           "Could not broadcast {} & {}", self, other))
       .take(rank)
       .zip(self.strides.iter()
