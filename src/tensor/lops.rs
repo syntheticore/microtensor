@@ -6,7 +6,7 @@ use crate::{
   shape::Shape,
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
-  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps },
+  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
 };
 
 

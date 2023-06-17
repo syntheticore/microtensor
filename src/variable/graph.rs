@@ -32,7 +32,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
 
   pub fn run(&self, inputs: &[&Variable<T>]) {
     for (input, data) in self.inputs.iter().zip(inputs) {
-      input.feed(data);
+      input.assign(data);
     }
     for output in &self.outputs {
       output.forward(); //XXX Don't calculate entire graph multiple times

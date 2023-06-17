@@ -143,18 +143,6 @@ impl<T: Inner> Tensor<T> {
     self.data.read().clone()
   }
 
-  pub fn size(&self) -> usize {
-    self.shape.size()
-  }
-
-  pub fn rank(&self) -> usize {
-    self.shape.rank()
-  }
-
-  pub fn dim(&self, i: isize) -> usize {
-    self.shape()[i]
-  }
-
   pub fn contiguous(&self) -> Self {
     if self.shape.contiguous() {
       self.clone()
@@ -399,9 +387,10 @@ impl<T: Numeric> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  pub fn feed(&self, other: &Self) {
+  pub fn assign(&self, other: &Self) {
+    //XXX Broadcast
     debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
-      "Could not feed {} tensor with {} tensor", self.shape, other.shape);
+      "Could not assign {} tensor to {} tensor", other.shape, self.shape);
     if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
     //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
@@ -487,29 +476,54 @@ impl<T: Numeric> Tensor<T> {
   pub fn bool(&self, threshold: T) -> Tensor<bool> {
     self.vectorize(|a| a > threshold )
   }
+
+  pub fn convolve(&self, kernel: &Self) -> Self {
+    let kernel_width = kernel.dim(-3);
+    let kernel_height = kernel.dim(-2);
+    let target_width = self.dim(-3) - (kernel_width - 1);
+    let target_height = self.dim(-2) - (kernel_height - 1);
+    let channels = self.dim(-1);
+    let dims = &self.shape().dims;
+    let mut dims = dims[0..dims.len() - 3].to_vec();
+    dims.append(&mut vec![target_width, target_height]);
+    let convolved = Self::zeros(&dims);
+    for x in 0..target_width as isize {
+      for y in 0..target_height as isize {
+        let slice = self.range_back(&[
+          x .. x + kernel_width as isize,
+          y .. y + kernel_height as isize,
+          0 .. channels as isize
+        ]);
+        convolved
+          .range_back(&[x .. x + 1, y .. y + 1])
+          .assign(&(slice * kernel).sum(-3));
+      }
+    }
+    convolved
+  }
 }
 
 impl<T: Numeric> std::ops::AddAssign for Tensor<T> {
   fn add_assign(&mut self, rhs: Self) {
-    self.feed(&self.add(&rhs));
+    self.assign(&self.add(&rhs));
   }
 }
 
 impl<T: Numeric> std::ops::SubAssign for Tensor<T> {
   fn sub_assign(&mut self, rhs: Self) {
-    self.feed(&self.sub(&rhs));
+    self.assign(&self.sub(&rhs));
   }
 }
 
 impl<T: Numeric> std::ops::MulAssign for Tensor<T> {
   fn mul_assign(&mut self, rhs: Self) {
-    self.feed(&self.mul(&rhs));
+    self.assign(&self.mul(&rhs));
   }
 }
 
 impl<T: Numeric> std::ops::DivAssign for Tensor<T> {
   fn div_assign(&mut self, rhs: Self) {
-    self.feed(&self.div(&rhs));
+    self.assign(&self.div(&rhs));
   }
 }
 
@@ -553,6 +567,7 @@ impl<T: Real> Tensor<T> {
     })
   }
 
+  //XXX Should collapse last dimension and return Tensor
   pub fn sample(&self) -> usize {
     let mut rng = rand::thread_rng();
     let dist = WeightedIndex::new(&self.cast::<f64>().into_raw()).unwrap();

@@ -76,7 +76,7 @@ impl<T: Real> Node<T> {
 
   fn reset_gradient(&self, filler: T) {
     if let Some(grad) = &self.cell.grad {
-      grad.feed(&Tensor::fill(&grad.shape().dims, filler));
+      grad.assign(&Tensor::fill(&grad.shape().dims, filler));
     }
   }
 
@@ -90,7 +90,7 @@ impl<T: Real> Node<T> {
           op.run(lhs, rhs)
         },
       };
-      self.cell.data.feed(&value);
+      self.cell.data.assign(&value);
     }
   }
 
@@ -107,7 +107,7 @@ impl<T: Real> Node<T> {
       };
       for (change, prev) in changes.iter().zip(self.previous.iter()) {
         if let Some(grad) = &prev.cell.grad {
-          grad.feed(&grad.add(change));
+          grad.assign(&grad.add(change));
         }
       }
     }
@@ -336,25 +336,25 @@ impl<T: Real + 'static> Variable<T> {
 
 impl<T: Real> std::ops::AddAssign<Tensor<T>> for Variable<T> {
   fn add_assign(&mut self, rhs: Tensor<T>) {
-    self.feed(&self.tensor().add(&rhs));
+    self.assign(&self.tensor().add(&rhs));
   }
 }
 
 impl<T: Real> std::ops::SubAssign<Tensor<T>> for Variable<T> {
   fn sub_assign(&mut self, rhs: Tensor<T>) {
-    self.feed(&self.tensor().sub(&rhs));
+    self.assign(&self.tensor().sub(&rhs));
   }
 }
 
 impl<T: Real> std::ops::MulAssign<Tensor<T>> for Variable<T> {
   fn mul_assign(&mut self, rhs: Tensor<T>) {
-    self.feed(&self.tensor().mul(&rhs));
+    self.assign(&self.tensor().mul(&rhs));
   }
 }
 
 impl<T: Real> std::ops::DivAssign<Tensor<T>> for Variable<T> {
   fn div_assign(&mut self, rhs: Tensor<T>) {
-    self.feed(&self.tensor().div(&rhs));
+    self.assign(&self.tensor().div(&rhs));
   }
 }
 

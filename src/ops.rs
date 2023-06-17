@@ -68,6 +68,18 @@ pub trait RealOps<I: Real>: std::ops::Neg {
 /// differentiable when called on a [Variable](crate::Variable).
 
 pub trait BaseHops<I: Inner>: BaseOps<I> {
+  fn rank(&self) -> usize {
+    self.shape().rank()
+  }
+
+  fn dim(&self, i: isize) -> usize {
+    self.shape()[i]
+  }
+
+  fn size(&self) -> usize {
+    self.shape().size()
+  }
+
   fn at(&self, indices: &[isize]) -> Self {
     let ranges: Vec<_> = indices.iter().enumerate()
       .map(|(i, &idx)| {
@@ -78,12 +90,19 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.range(&ranges).squeeze_first(indices.len())
   }
 
+  fn range_back(&self, ranges: &[Range<isize>]) -> Self {
+    let full_slices = self.rank() - ranges.len();
+    let mut vec = vec![0..-1; full_slices];
+    vec.append(&mut ranges.to_vec());
+    self.range(&vec)
+  }
+
   fn squeeze_only(&self, dim: isize) -> Self {
     self.squeeze(&[dim])
   }
 
   fn squeeze_but(&self, dim: isize) -> Self {
-    let rank = self.shape().rank();
+    let rank = self.rank();
     let dim = negative_index(dim, rank, false) as isize;
     let dims: Vec<_> = (0..rank as isize)
       .filter(|&d| d != dim )
@@ -97,11 +116,11 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
   }
 
   fn squeeze_all(&self) -> Self {
-    self.squeeze_first(self.shape().rank())
+    self.squeeze_first(self.rank())
   }
 
   fn unsqueeze_n(&self, n: usize, dim: isize) -> Self {
-    let dim = negative_index(dim, self.shape().rank(), true) as isize;
+    let dim = negative_index(dim, self.rank(), true) as isize;
     let mut out = self.clone();
     for _ in 0..n {
       out = out.unsqueeze(dim);
@@ -110,7 +129,7 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
   }
 
   fn extend(&self, rank: usize) -> Self {
-    let n = rank - self.shape().rank();
+    let n = rank - self.rank();
     self.unsqueeze_n(n, -1)
   }
 
@@ -168,7 +187,7 @@ where
   }
 
   fn mean(&self, dim: isize) -> Self {
-    let udim = negative_index(dim, self.shape().rank(), false);
+    let udim = negative_index(dim, self.rank(), false);
     let n: usize = self.shape().dims[udim..].iter().product();
     let n = I::from(n).unwrap();
     self.sum(dim) / n
@@ -177,14 +196,14 @@ where
   // mean_over
 
   fn variance(&self, dim: isize) -> Self {
-    let mean = self.mean(dim).extend(self.shape().rank());
+    let mean = self.mean(dim).extend(self.rank());
     (self - &mean).sqr().mean(dim)
   }
 
   fn softmax(&self, dim: isize) -> Self {
-    let max = self.max(dim).extend(self.shape().rank());
+    let max = self.max(dim).extend(self.rank());
     let exp = (self - &max).exp();
-    &exp / &exp.sum(dim).extend(exp.shape().rank())
+    &exp / &exp.sum(dim).extend(exp.rank())
   }
 
   fn max_with(&self, rhs: &Self) -> Self {
