@@ -276,6 +276,23 @@ impl<T: Inner> Tensor<T> {
   //   Self { shape, data}
   // }
 
+  pub fn assign(&self, other: &Self) {
+    //XXX Broadcast
+    debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
+      "Could not assign {} tensor to {} tensor", other.shape, self.shape);
+    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
+    //XXX check if RC has other references and copy data if so
+    let mut data = self.raw_mut();
+    let other_data = other.raw();
+    for (i, j) in self.shape.iter().zip(other.shape.iter()) {
+      data[i] = other_data[j].clone(); //XXX measure performance
+    }
+  }
+
+  pub fn set(&mut self, indices: &[isize], other: &Self) {
+    self.at(indices).assign(other)
+  }
+
   pub fn item(&self) -> T {
     debug_assert!(self.shape.squeeze_all().rank() == 0,
       "Can't extract item from non-scalar {}", self.shape);
@@ -387,19 +404,6 @@ impl<T: Numeric> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  pub fn assign(&self, other: &Self) {
-    //XXX Broadcast
-    debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
-      "Could not assign {} tensor to {} tensor", other.shape, self.shape);
-    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
-    //XXX check if RC has other references and copy data if so
-    let mut data = self.raw_mut();
-    let other_data = other.raw();
-    for (i, j) in self.shape.iter().zip(other.shape.iter()) {
-      data[i] = other_data[j];
-    }
-  }
-
   pub fn add(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a + b )
   }
@@ -477,29 +481,32 @@ impl<T: Numeric> Tensor<T> {
     self.vectorize(|a| a > threshold )
   }
 
-  pub fn convolve(&self, kernel: &Self) -> Self {
-    let kernel_width = kernel.dim(-3);
-    let kernel_height = kernel.dim(-2);
+  pub fn convolve(&self, kernels: &Self) -> Self {
+    // self: (batch, width, height, channels)
+    // kernels: (k, width, height, channels)
+    let kernel_width = kernels.dim(-3);
+    let kernel_height = kernels.dim(-2);
     let target_width = self.dim(-3) - (kernel_width - 1);
     let target_height = self.dim(-2) - (kernel_height - 1);
-    let channels = self.dim(-1);
+    // let channels = self.dim(-1);
+    // convolved: (batch, k, width, height)
     let dims = &self.shape().dims;
     let mut dims = dims[0..dims.len() - 3].to_vec();
-    dims.append(&mut vec![target_width, target_height]);
+    dims.append(&mut vec![kernels.dim(0), target_width, target_height]);
     let convolved = Self::zeros(&dims);
     for x in 0..target_width as isize {
       for y in 0..target_height as isize {
         let slice = self.range_back(&[
           x .. x + kernel_width as isize,
           y .. y + kernel_height as isize,
-          0 .. channels as isize
+          0 .. -1,
         ]);
-        convolved
-          .range_back(&[x .. x + 1, y .. y + 1])
-          .assign(&(slice * kernel).sum(-3));
+        let dot = (slice.unsqueeze(-4) * kernels).sum(-3); // (batch, w, h, c) -> (batch, k, w, h, c) -> (batch, k)
+        convolved.range_back(&[x..x + 1, y..y + 1]).assign(&dot);
       }
     }
-    convolved
+    // (batch, k, width, height) -> (batch, width, height, k)
+    convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   }
 }
 
