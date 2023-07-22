@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use serde::{Serialize, Deserialize};
 
 use crate::internal::*;
+use crate::Tensor;
 
 
 /// The shape of a [Tensor](crate::Tensor).
@@ -77,6 +78,10 @@ impl Shape {
   pub fn contiguous(&self) -> bool {
     //XXX unsqeezed dims don't affect contiguity
     self.strides == Self::make_strides(&self.dims)
+  }
+
+  pub fn complete(&self) -> bool {
+    self.contiguous() && self.offset == 0
   }
 
   pub fn at_or(&self, idx: isize, or: usize) -> usize {
@@ -262,6 +267,19 @@ impl Shape {
     shape.dims.swap(dim1, dim2);
     shape.strides.swap(dim1, dim2);
     shape
+  }
+
+  pub fn windows(&self, shape: &[usize]) -> Self {
+    let window_shape = Tensor::vec(shape);
+    let step = Tensor::vec(&[1,1]);
+
+    let in_shape = Tensor::vec(&self.squeeze(&[-1]).dims);
+    let win_indices_shape = ((in_shape - &window_shape) / step) + 1;
+
+    let new_shape = [win_indices_shape.into_raw(), window_shape.into_raw()].concat();
+    let strides = [self.strides.clone(), self.strides.clone()].concat();
+
+    Self::strided(&new_shape, &strides)
   }
 }
 

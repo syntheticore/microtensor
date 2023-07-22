@@ -8,13 +8,17 @@ use crate::{
   tensor::Tensor,
   variable::{ Variable, BinaryOp, UnaryOp },
   scalar::Real,
-  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
+  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops },
 };
 
 
 impl<T: Real> BaseOps<T> for Variable<T> {
   fn scalar(item: T) -> Self {
     Self::from_tensor(Tensor::scalar(item), false)
+  }
+
+  fn fill(shape: &[usize], filler: T) -> Self {
+    Self::from_tensor(Tensor::fill(shape, filler), false)
   }
 
   fn shape(&self) -> &Shape {
@@ -50,6 +54,14 @@ impl<T: Real> BaseOps<T> for Variable<T> {
   fn concat(&self, rhs: &Self, dim: isize) -> Self {
     self.binary_op(Concat { dim }, rhs)
   }
+
+  fn assign_masked(&self, rhs: &Self, mask: &Shape) -> Self {
+    self.binary_op(AssignMasked { mask: mask.clone() }, rhs)
+  }
+
+  fn layout(&self, shape: Shape) -> Self {
+    self.unary_op(Layout { shape })
+  }
 }
 
 impl<T: Real> NumericOps<T> for Variable<T> {
@@ -68,6 +80,12 @@ impl<T: Real> NumericOps<T> for Variable<T> {
   fn max(&self, dim: isize) -> Self {
     self.unary_op(Max { dim })
   }
+
+  // fn compose(dims: &[usize], inputs: &[(Shape, Self)]) -> Self {
+  //   let masks = inputs.iter().map(|(mask, _)| mask.clone() ).collect();
+  //   let others: Vec<_> = inputs.iter().map(|(_, other)| other ).collect();
+  //   Self::multi_op(Compose { dims: dims.to_vec(), masks }, &others)
+  // }
 }
 
 impl<T: Real> SignedOps<T> for Variable<T> {
@@ -414,8 +432,7 @@ impl<T: Real> BinaryOp<T> for Concat {
     lhs.concat(rhs, self.dim)
   }
 
-  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
-  {
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
     let size_l = lhs.dim(self.dim);
     let size_r = rhs.dim(self.dim);
     let dim = negative_index(self.dim, grad.rank(), false);
@@ -427,6 +444,48 @@ impl<T: Real> BinaryOp<T> for Concat {
     ranges_r[dim] = size_l..size_l + size_r as isize;
 
     (grad.range(&ranges_l), grad.range(&ranges_r))
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignMasked {
+  mask: Shape,
+}
+
+impl<T: Real> BinaryOp<T> for AssignMasked {
+  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
+    lhs.assign_masked(rhs, &self.mask)
+  }
+
+  fn derive(&self, _lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
+    let lgrad = grad.detach();
+    lgrad.layout(self.mask.clone()).assign(&Tensor::zeros(&self.mask.dims));
+    let rgrad = grad.complete().layout(self.mask.clone()).reshape(&rhs.shape().dims);
+    (lgrad, rgrad)
+  }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Layout {
+  shape: Shape,
+}
+
+impl<T: Real> UnaryOp<T> for Layout {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.layout(self.shape.clone())
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let out = Tensor::zeros(&lhs.shape().dims);
+    {
+      let mut raw = out.raw_mut();
+      for (i, g) in self.shape.iter().zip(grad.param_iter()) {
+        raw[i] += g;
+      }
+    }
+    out
   }
 }
 
@@ -561,6 +620,24 @@ impl<T: Real> UnaryOp<T> for Max {
     uncollapse(self.dim, lhs, grad) //XXX
   }
 }
+
+
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct Compose {
+//   dims: Vec<usize>,
+//   masks: Vec<Shape>,
+// }
+
+// impl<T: Real> MultiOp<T> for Compose {
+//   fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T> {
+//     let masked_inputs: Vec<_> = inputs.iter().enumerate().map(|(i, &input)| (self.masks[i].clone(), input.clone())).collect();
+//     Tensor::compose(&self.dims, &masked_inputs)
+//   }
+
+//   fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>> {
+//     inputs.iter().map(|_| grad.clone() ).collect()
+//   }
+// }
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

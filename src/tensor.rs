@@ -24,7 +24,7 @@ use crate::{
   shape::{ Shape, DimensionIterator },
   variable::Variable,
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
-  ops::{ BaseOps, NumericOps, BaseHops, RealHops },
+  ops::{ BaseOps, NumericOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -44,6 +44,7 @@ pub struct Tensor<T: Inner> {
 }
 
 impl<T: Inner> BaseHops<T> for Tensor<T> {}
+impl<T: Numeric> NumericHops<T> for Tensor<T> {}
 impl<T: Real> RealHops<T> for Tensor<T> {}
 
 impl<T: Inner> PartialEq for Tensor<T> {
@@ -80,10 +81,6 @@ impl<T: Inner> Tensor<T> {
 
   pub fn from_vec(vec: Vec<T>) -> Self {
     Self::new(&[vec.len()], vec)
-  }
-
-  pub fn fill(shape: &[usize], filler: T) -> Self {
-    Self::new(shape, vec![filler; shape.iter().product()])
   }
 
   pub fn init(shape: &[usize], mut cb: impl FnMut(Vec<usize>) -> T) -> Self {
@@ -151,8 +148,12 @@ impl<T: Inner> Tensor<T> {
     }
   }
 
+  pub fn is_complete(&self) -> bool {
+    self.shape.complete() && (self.size() == self.raw().len())
+  }
+
   pub fn complete(&self) -> Self {
-    if self.shape.contiguous() && (self.size() == self.raw().len()) {
+    if self.is_complete() {
       self.clone()
     } else {
       self.detach()
@@ -289,9 +290,9 @@ impl<T: Inner> Tensor<T> {
     }
   }
 
-  pub fn set(&mut self, indices: &[isize], other: &Self) {
-    self.at(indices).assign(other)
-  }
+  // pub fn set(&mut self, indices: &[isize], other: &Self) {
+  //   self.at(indices).assign(other)
+  // }
 
   pub fn item(&self) -> T {
     debug_assert!(self.shape.squeeze_all().rank() == 0,
@@ -357,6 +358,10 @@ impl<T: Inner> Tensor<T> {
     self.iter(dim).collect()
   }
 
+  // pub fn flatten(&self) -> Self {
+  //   Self::from_vec(self.param_iter().collect())
+  // }
+
   pub fn shuffle(&self, dim: isize) -> Self {
     self.unsqueeze(0).map(dim, |sub| {
       let mut sub = sub.to_vec(0);
@@ -369,13 +374,13 @@ impl<T: Inner> Tensor<T> {
 // Numeric
 
 impl<T: Numeric> Tensor<T> {
-  pub fn ones(shape: &[usize]) -> Self {
-    Self::fill(shape, T::one())
-  }
+  // pub fn ones(shape: &[usize]) -> Self {
+  //   Self::fill(shape, T::one())
+  // }
 
-  pub fn zeros(shape: &[usize]) -> Self {
-    Self::fill(shape, T::zero())
-  }
+  // pub fn zeros(shape: &[usize]) -> Self {
+  //   Self::fill(shape, T::zero())
+  // }
 
   pub fn arrange(shape: &[usize], start: T, step: T) -> Self {
     Self::new(shape, (0..shape.iter().product())
@@ -479,34 +484,6 @@ impl<T: Numeric> Tensor<T> {
 
   pub fn bool(&self, threshold: T) -> Tensor<bool> {
     self.vectorize(|a| a > threshold )
-  }
-
-  pub fn convolve(&self, kernels: &Self) -> Self {
-    // self: (batch, width, height, channels)
-    // kernels: (k, width, height, channels)
-    let kernel_width = kernels.dim(-3);
-    let kernel_height = kernels.dim(-2);
-    let target_width = self.dim(-3) - (kernel_width - 1);
-    let target_height = self.dim(-2) - (kernel_height - 1);
-    // let channels = self.dim(-1);
-    // convolved: (batch, k, width, height)
-    let dims = &self.shape().dims;
-    let mut dims = dims[0..dims.len() - 3].to_vec();
-    dims.append(&mut vec![kernels.dim(0), target_width, target_height]);
-    let convolved = Self::zeros(&dims);
-    for x in 0..target_width as isize {
-      for y in 0..target_height as isize {
-        let slice = self.range_back(&[
-          x .. x + kernel_width as isize,
-          y .. y + kernel_height as isize,
-          0 .. -1,
-        ]);
-        let dot = (slice.unsqueeze(-4) * kernels).sum(-3); // (batch, w, h, c) -> (batch, k, w, h, c) -> (batch, k)
-        convolved.range_back(&[x..x + 1, y..y + 1]).assign(&dot);
-      }
-    }
-    // (batch, k, width, height) -> (batch, width, height, k)
-    convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   }
 }
 

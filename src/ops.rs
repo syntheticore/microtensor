@@ -17,8 +17,9 @@ pub trait Cops<I: Numeric> {
 /// Differentiable mid-level operations that are also implemented
 /// for non-differentiable [Inner] types.
 
-pub trait BaseOps<I: Inner>: Clone {
+pub trait BaseOps<I: Inner>: Clone + std::fmt::Display {
   fn scalar(item: I) -> Self;
+  fn fill(shape: &[usize], filler: I) -> Self;
   fn shape(&self) -> &Shape;
   fn range(&self, ranges: &[Range<isize>]) -> Self;
   fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self;
@@ -27,33 +28,36 @@ pub trait BaseOps<I: Inner>: Clone {
   fn unsqueeze(&self, dim: isize) -> Self; //XXX multiple dims
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
   fn concat(&self, rhs: &Self, dim: isize) -> Self;
+  fn assign_masked(&self, rhs: &Self, shape: &Shape) -> Self;
+  fn layout(&self, shape: Shape) -> Self;
 }
 
 
 /// Differentiable mid-level operations that are also implemented
 /// for non-differentiable [Numeric] inner types.
 
-pub trait NumericOps<I: Numeric>: NumOps + NumOps<I, Self> + Sized {
+pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized {
   fn sum(&self, dim: isize) -> Self;
   // sum_over or generic form of sum etc., like sum(&[1,2])
   fn mm(&self, rhs: &Self) -> Self;
   fn min(&self, dim: isize) -> Self;
   fn max(&self, dim: isize) -> Self;
   fn max_over(&self, _dim: isize) -> Self { todo!() }
+  // fn compose(dims: &[usize], inputs: &[(Shape, Self)]) -> Self;
 }
 
 
 /// Differentiable mid-level operations that are also implemented
 /// for non-differentiable [Signed] inner types.
 
-pub trait SignedOps<I: Signed>: std::ops::Neg {
+pub trait SignedOps<I: Signed>: NumericOps<I> + std::ops::Neg {
   fn abs(&self) -> Self;
 }
 
 
 /// Differentiable mid-level operations.
 
-pub trait RealOps<I: Real>: std::ops::Neg {
+pub trait RealOps<I: Real>: NumericOps<I> + SignedOps<I> {
   fn pow(&self, rhs: &Self) -> Self;
   fn sin(&self) -> Self;
   fn cos(&self) -> Self;
@@ -66,6 +70,16 @@ pub trait RealOps<I: Real>: std::ops::Neg {
 /// High-level operations, implemented exclusively on top of
 /// Mops and other Hops. As a result, these are all
 /// differentiable when called on a [Variable](crate::Variable).
+
+fn make_ranges(indices: &[isize], shape: &Shape) -> Vec<Range<isize>> {
+  indices.iter()
+    .zip(&shape.dims)
+    .map(|(&idx, &dim)| {
+      let idx = negative_index(idx, dim, false) as isize;
+      idx .. idx + 1
+    })
+    .collect()
+}
 
 pub trait BaseHops<I: Inner>: BaseOps<I> {
   fn rank(&self) -> usize {
@@ -80,21 +94,24 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.shape().size()
   }
 
-  fn at(&self, indices: &[isize]) -> Self {
-    let ranges: Vec<_> = indices.iter().enumerate()
-      .map(|(i, &idx)| {
-        let idx = negative_index(idx, self.shape().dims[i], false);
-        idx as isize .. idx as isize + 1
-      })
-      .collect();
-    self.range(&ranges).squeeze_first(indices.len())
-  }
-
   fn range_back(&self, ranges: &[Range<isize>]) -> Self {
     let full_slices = self.rank() - ranges.len();
     let mut vec = vec![0..-1; full_slices];
     vec.append(&mut ranges.to_vec());
     self.range(&vec)
+  }
+
+  fn at(&self, indices: &[isize]) -> Self {
+    let ranges = make_ranges(indices, self.shape());
+    self.range(&ranges).squeeze_first(indices.len())
+  }
+
+  fn at_back(&self, indices: &[isize]) -> Self {
+    self.range_back(&make_ranges(indices, self.shape()))
+  }
+
+  fn set(&mut self, indices: &[isize], other: &Self) -> Self {
+    self.assign_masked(other, self.at(indices).shape())
   }
 
   fn squeeze_only(&self, dim: isize) -> Self {
@@ -149,6 +166,22 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
       .collect();
     Self::stack(&rows, 0)
   }
+
+  fn flatten(&self) -> Self {
+    self.reshape(&[0]).squeeze_all()
+  }
+
+  fn windows(&self, shape: &[usize]) -> Self {
+    self.layout(self.shape().windows(shape))
+  }
+
+  // fn transpose_vec(&self, extend_front: bool) -> Self {
+  //   let mut this = self.clone();
+  //   if self.rank() == 1 {
+  //     this = self.unsqueeze(if extend_front { -2 } else { -1 })
+  //   }
+  //   this.transpose(-1, -2)
+  // }
 }
 
 
@@ -156,7 +189,26 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
 /// Mops and other Hops. As a result, these are all
 /// differentiable when called on a [Variable](crate::Variable).
 
-pub trait RealHops<I>: BaseOps<I> + NumericOps<I> + SignedOps<I> + RealOps<I> + BaseHops<I>
+pub trait NumericHops<I>: NumericOps<I> + BaseHops<I>
+where
+  I: Numeric,
+  for<'a> &'a Self: NumOps<&'a Self, Self> + NumOps<I, Self>,
+{
+  fn ones(shape: &[usize]) -> Self {
+    Self::fill(shape, I::one())
+  }
+
+  fn zeros(shape: &[usize]) -> Self {
+    Self::fill(shape, I::zero())
+  }
+}
+
+
+/// High-level operations, implemented exclusively on top of
+/// Mops and other Hops. As a result, these are all
+/// differentiable when called on a [Variable](crate::Variable).
+
+pub trait RealHops<I>: RealOps<I> + NumericHops<I>
 where
   I: Real,
   for<'a> &'a Self: NumOps<&'a Self, Self> + NumOps<I, Self>,
@@ -209,6 +261,50 @@ where
   fn max_with(&self, rhs: &Self) -> Self {
     //XXX broadcast
     self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0).squeeze_only(0)
+  }
+
+  // fn convolve(&self, kernels: &Self) -> Self {
+  //   // self: (batch, width, height, channels)
+  //   // kernels: (k, width, height, channels)
+  //   let kernel_width = kernels.dim(-3);
+  //   let kernel_height = kernels.dim(-2);
+  //   let target_width = self.dim(-3) - (kernel_width - 1);
+  //   let target_height = self.dim(-2) - (kernel_height - 1);
+  //   // let channels = self.dim(-1);
+  //   // convolved: (batch, k, width, height)
+  //   let dims = &self.shape().dims;
+  //   let mut dims = dims[0..dims.len() - 3].to_vec();
+  //   dims.append(&mut vec![kernels.dim(0), target_width, target_height]);
+  //   let mut convolved = Self::zeros(&dims);
+  //   // let mut assignments = vec![];
+  //   for x in 0..target_width as isize {
+  //     for y in 0..target_height as isize {
+  //       let slice = self.range_back(&[
+  //         x .. x + kernel_width as isize,
+  //         y .. y + kernel_height as isize,
+  //         0 .. -1,
+  //       ]);
+  //       let dot = (&slice.unsqueeze(-4) * kernels).sum(-3); // (batch, w, h, c) -> (batch, k, w, h, c) -> (batch, k)
+  //       // convolved.range_back(&[x..x + 1, y..y + 1]).assign(&dot);
+  //       let mask = convolved.at_back(&[x, y]);
+  //       convolved = convolved.assign_masked(&dot, mask.shape());
+  //       // assignments.push((mask.shape().clone(), dot));
+  //     }
+  //   }
+  //   // let convolved = Self::compose(&dims, &assignments);
+  //   // (batch, k, width, height) -> (batch, width, height, k)
+  //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
+  // }
+
+  fn convolve(&self, kernel: &Self, bias: &Self) -> Self {
+    let kd = kernel.dim(0);
+    let out_dim = (self.dim(0) - kd) + 1;
+
+    let windows = self.windows(&kernel.shape().dims);
+    let windows = windows.reshape(&[0, kd * kd]).transpose(0, 1);
+
+    let conv = &kernel.flatten().mm(&windows) + bias;
+    conv.reshape(&[out_dim, out_dim])
   }
 }
 

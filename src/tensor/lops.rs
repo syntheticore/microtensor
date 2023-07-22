@@ -15,6 +15,10 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     Self::new(&[], vec![item])
   }
 
+  fn fill(shape: &[usize], filler: T) -> Self {
+    Self::new(shape, vec![filler; shape.iter().product()])
+  }
+
   fn shape(&self) -> &Shape {
     &self.shape
   }
@@ -74,6 +78,24 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
       "Cannot concat {} & {} tensors. Shapes may only differ in dim {}",
       self.shape, rhs.shape, dim);
     Self::new(&dims_l, data)
+  }
+
+  fn assign_masked(&self, other: &Self, mask: &Shape) -> Self {
+    debug_assert!(mask.squeeze_all().dims == other.shape.squeeze_all().dims,
+      "Could not assign {} tensor to {} mask", other.shape, mask);
+    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
+    let mut data = self.raw_mut();
+    let other_data = other.raw();
+    for (i, j) in mask.iter().zip(other.shape.iter()) {
+      data[i] = other_data[j].clone();
+    }
+    self.clone()
+  }
+
+  fn layout(&self, shape: Shape) -> Self {
+    //XXX check if shape overflows self's memory
+    assert!(self.is_complete());
+    Self { shape, data: self.data.clone() }
   }
 }
 
@@ -169,6 +191,14 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
         .unwrap()
     })
   }
+
+  // fn compose(dims: &[usize], assignments: &[(Shape, Self)]) -> Self {
+  //   let composed = Self::zeros(dims);
+  //   for (mask, other) in assignments {
+  //     composed.assign_masked(other, mask);
+  //   }
+  //   composed
+  // }
 }
 
 impl<T: Signed> SignedOps<T> for Tensor<T> {

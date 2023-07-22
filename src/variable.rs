@@ -13,7 +13,7 @@ use crate::{
   internal::*,
   tensor::Tensor,
   scalar::Real,
-  ops::{ BaseOps, NumericOps, BaseHops, RealHops },
+  ops::{ BaseOps, NumericOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -39,6 +39,12 @@ pub trait BinaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize 
 }
 
 
+pub trait MultiOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
+  fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T>;
+  fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>>;
+}
+
+
 /// Node in a computation graph, containing a [Variable]'s data and gradient,
 /// as well as the operation used to create it.
 
@@ -61,6 +67,7 @@ struct NodeCell<T: Real> {
 enum Op<T: Real + 'static> {
   Binary(serde_traitobject::Box<dyn BinaryOp<T>>),
   Unary(serde_traitobject::Box<dyn UnaryOp<T>>),
+  Multi(serde_traitobject::Box<dyn MultiOp<T>>),
 }
 
 impl<T: Real> PartialEq for Node<T> {
@@ -89,6 +96,10 @@ impl<T: Real> Node<T> {
           let rhs = &self.previous[1].cell.data;
           op.run(lhs, rhs)
         },
+        Op::Multi(op) => {
+          let tensors: Vec<&Tensor<T>> = self.previous.iter().map(|prev| &prev.cell.data ).collect();
+          op.run(&tensors)
+        },
       };
       self.cell.data.assign(&value);
     }
@@ -103,6 +114,10 @@ impl<T: Real> Node<T> {
           let rhs = &self.previous[1];
           let changes = op.derive(&lhs.cell.data, &rhs.cell.data, grad);
           vec![changes.0, changes.1]
+        },
+        Op::Multi(op) => {
+          let tensors: Vec<&Tensor<T>> = self.previous.iter().map(|prev| &prev.cell.data ).collect();
+          op.derive(&tensors, grad)
         },
       };
       for (change, prev) in changes.iter().zip(self.previous.iter()) {
@@ -133,6 +148,7 @@ pub struct Variable<T: Real + 'static> {
 //XXX disallow clone for trained vars
 
 impl<T: Real> BaseHops<T> for Variable<T> {}
+impl<T: Real> NumericHops<T> for Variable<T> {}
 impl<T: Real> RealHops<T> for Variable<T> {}
 
 impl<T: Real> std::ops::Deref for Variable<T> {
@@ -226,6 +242,17 @@ impl<T: Real + 'static> Variable<T> {
       data,
       self.grad().is_some() || rhs.grad().is_some(),
       vec![self.node.clone(), rhs.node.clone()],
+    )
+  }
+
+  pub fn multi_op(op: impl MultiOp<T> + 'static, inputs: &[&Self]) -> Self {
+    let tensors: Vec<&Tensor<T>> = inputs.iter().map(|input| &input.node.cell.data ).collect();
+    let data = op.run(&tensors);
+    Self::operation(
+      Op::Multi(serde_traitobject::Box::new(op)),
+      data,
+      inputs.iter().any(|input| input.grad().is_some() ),
+      inputs.iter().map(|input| input.node.clone() ).collect(),
     )
   }
 
