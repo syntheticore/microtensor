@@ -75,6 +75,11 @@ impl Shape {
     self.dims.len()
   }
 
+  pub fn stride(&self, i: isize) -> isize {
+    let idx = negative_index(i, self.rank(), false);
+    self.strides[idx]
+  }
+
   pub fn contiguous(&self) -> bool {
     //XXX unsqeezed dims don't affect contiguity
     self.strides == Self::make_strides(&self.dims)
@@ -116,19 +121,23 @@ impl Shape {
     }
   }
 
-  pub fn view(&self, shape: &[usize]) -> Self { //XXX allow -1 to keep dimension
+  pub fn view(&self, shape: &[usize]) -> Self {
     debug_assert!(self.contiguous()); //XXX
-    // Calculate size of placeholders
-    let dims: Vec<usize> = shape.iter().enumerate().map(|(i, &n)| if n == 0 {
-      let product: usize =
-        shape[0..i].iter()
-        .chain(shape[i + 1..shape.len()].iter())
-        .product();
-      self.size() / product
-    } else {
-      n
-    }).collect();
-    assert_eq!(dims.iter().product::<usize>(), self.size());
+    debug_assert!(shape.iter().filter(|&n| *n == 0 ).count() <= 1, "Multiple placeholders in shape {:?}", shape);
+    // Calculate size of placeholder
+    let dims: Vec<usize> = shape.iter()
+      .enumerate()
+      .map(|(i, &n)| if n == 0 {
+        let product: usize =
+          shape[0..i].iter()
+          .chain(shape[i + 1..shape.len()].iter())
+          .product();
+        self.size() / product
+      } else {
+        n
+      })
+      .collect();
+    debug_assert_eq!(dims.iter().product::<usize>(), self.size());
     let strides = Self::make_strides(&dims);
     Self { dims, strides, offset: self.offset }
   }
@@ -269,15 +278,20 @@ impl Shape {
     shape
   }
 
-  pub fn windows(&self, shape: &[usize]) -> Self {
-    let window_shape = Tensor::vec(shape);
+  pub fn windows(&self, shape: &Shape) -> Self {
+    let window_shape = Tensor::vec(&[shape[-2], shape[-1]]);
     let step = Tensor::vec(&[1,1]);
 
-    let in_shape = Tensor::vec(&self.squeeze(&[-1]).dims);
+    let in_shape = Tensor::vec(&[self[-2], self[-1]]);
     let win_indices_shape = ((in_shape - &window_shape) / step) + 1;
 
-    let new_shape = [win_indices_shape.into_raw(), window_shape.into_raw()].concat();
-    let strides = [self.strides.clone(), self.strides.clone()].concat();
+    let frame_strides = [self.stride(-2), self.stride(-1)];
+    let batch_strides = &self.strides[0..self.strides.len() - 2];
+
+    let batch_dims = &self.dims[0..self.dims.len() - 2];
+
+    let new_shape = [batch_dims.to_vec(), win_indices_shape.into_raw(), window_shape.into_raw()].concat();
+    let strides = [batch_strides.to_vec(), frame_strides.to_vec(), frame_strides.to_vec()].concat();
 
     Self::strided(&new_shape, &strides)
   }

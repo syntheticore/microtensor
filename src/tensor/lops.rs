@@ -92,10 +92,11 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     self.clone()
   }
 
-  fn layout(&self, shape: Shape) -> Self {
+  fn layout(&self, mut shape: Shape) -> Self {
     //XXX check if shape overflows self's memory
-    assert!(self.is_complete());
-    Self { shape, data: self.data.clone() }
+    let this = self.contiguous();
+    shape.offset += this.shape.offset;
+    Self { shape, data: this.data.clone() }
   }
 }
 

@@ -67,10 +67,6 @@ pub trait RealOps<I: Real>: NumericOps<I> + SignedOps<I> {
 }
 
 
-/// High-level operations, implemented exclusively on top of
-/// Mops and other Hops. As a result, these are all
-/// differentiable when called on a [Variable](crate::Variable).
-
 fn make_ranges(indices: &[isize], shape: &Shape) -> Vec<Range<isize>> {
   indices.iter()
     .zip(&shape.dims)
@@ -80,6 +76,10 @@ fn make_ranges(indices: &[isize], shape: &Shape) -> Vec<Range<isize>> {
     })
     .collect()
 }
+
+/// High-level operations, implemented exclusively on top of
+/// Mops and other Hops. As a result, these are all
+/// differentiable when called on a [Variable](crate::Variable).
 
 pub trait BaseHops<I: Inner>: BaseOps<I> {
   fn rank(&self) -> usize {
@@ -167,11 +167,19 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     Self::stack(&rows, 0)
   }
 
+  fn reshape_keep(&self, dims: &[isize]) -> Self {
+    let dims: Vec<_> = dims.iter()
+      .enumerate()
+      .map(|(i, &n)| if n == -1 { self.shape()[i as isize] } else { n as usize })
+      .collect();
+    self.reshape(&dims)
+  }
+
   fn flatten(&self) -> Self {
     self.reshape(&[0]).squeeze_all()
   }
 
-  fn windows(&self, shape: &[usize]) -> Self {
+  fn windows(&self, shape: &Shape) -> Self {
     self.layout(self.shape().windows(shape))
   }
 
@@ -296,15 +304,22 @@ where
   //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   // }
 
-  fn convolve(&self, kernel: &Self, bias: &Self) -> Self {
-    let kd = kernel.dim(0);
-    let out_dim = (self.dim(0) - kd) + 1;
+  fn convolve(&self, kernels: &Self, bias: &Self) -> Self {
+    let kernel_width = kernels.dim(-2);
+    let kernel_height = kernels.dim(-1);
+    let out_width = (self.dim(-2) - kernel_width) + 1;
+    let out_height = (self.dim(-1) - kernel_height) + 1;
 
-    let windows = self.windows(&kernel.shape().dims);
-    let windows = windows.reshape(&[0, kd * kd]).transpose(0, 1);
+    let windows = self.windows(kernels.shape());
+    let windows = windows.reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize]);
+    let windows = windows.transpose(-2, -1).unsqueeze(2);
 
-    let conv = &kernel.flatten().mm(&windows) + bias;
-    conv.reshape(&[out_dim, out_dim])
+    let flat_kernels = kernels.reshape_keep(&[-1, -1, 0]);
+
+    let conv = flat_kernels.mm(&windows);
+    let conv = &conv.transpose(-2, -1).squeeze_only(-1).transpose(1, 2).transpose(2, 3).sum(-1) + bias;
+
+    conv.reshape(&[self.dim(0), kernels.dim(0), out_width, out_height])
   }
 }
 
