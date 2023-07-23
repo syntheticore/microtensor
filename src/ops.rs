@@ -310,11 +310,16 @@ where
     let out_width = (self.dim(-2) - kernel_width) + 1;
     let out_height = (self.dim(-1) - kernel_height) + 1;
 
-    let windows = self.windows(kernels.shape());
-    let windows = windows.reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize]);
-    let windows = windows.transpose(-2, -1).unsqueeze(2);
+    let windows = self
+      .windows(kernels.shape())
+      .reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize])
+      .transpose(-2, -1)
+      .unsqueeze(2);
 
     let flat_kernels = kernels.reshape_keep(&[-1, -1, 0]);
+
+    let flat_kernels = flat_kernels.broadcast(windows.shape(), Some(-2));
+    let windows = windows.broadcast(&flat_kernels.shape(), Some(-2));
 
     let conv = flat_kernels.mm(&windows);
     let conv = &conv.transpose(-2, -1).squeeze_only(-1).transpose(1, 2).transpose(2, 3).sum(-1) + bias;

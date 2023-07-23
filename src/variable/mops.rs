@@ -29,8 +29,8 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.unary_op(Range { ranges: ranges.to_vec() })
   }
 
-  fn broadcast(&self, shape: &Shape, _ignore_from: Option<isize>) -> Self {
-    self.unary_op(Broadcast { dims: shape.dims.clone() })
+  fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self {
+    self.unary_op(Broadcast { dims: shape.dims.clone(), ignore_from })
   }
 
   fn reshape(&self, dims: &[usize]) -> Self {
@@ -369,18 +369,24 @@ impl<T: Real> UnaryOp<T> for Range {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Broadcast {
   dims: Vec<usize>,
+  ignore_from: Option<isize>,
 }
 
 impl<T: Real> UnaryOp<T> for Broadcast {
   fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.broadcast(&Shape::new(&self.dims), None)
+    lhs.broadcast(&Shape::new(&self.dims), self.ignore_from)
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let shape = lhs.shape().broadcast(&Shape::new(&self.dims), None);
+    let shape = lhs.shape().broadcast(&Shape::new(&self.dims), self.ignore_from);
+
+    let rank = lhs.rank().max(self.dims.len());
+    let ignore = self.ignore_from.unwrap_or(rank as isize);
+    let ignore = negative_index(ignore, rank, false);
+
     let mut grad = grad.clone();
     for (d, &stride) in shape.strides.iter().enumerate().rev() {
-      if stride == 0 {
+      if stride == 0 && d < ignore {
         grad = grad.sum_over(d as isize);
       }
     }
@@ -461,7 +467,7 @@ impl<T: Real> BinaryOp<T> for AssignMasked {
   fn derive(&self, _lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
     let lgrad = grad.detach();
     lgrad.layout(self.mask.clone()).assign(&Tensor::zeros(&self.mask.dims));
-    let rgrad = grad.complete().layout(self.mask.clone()).reshape(&rhs.shape().dims);
+    let rgrad = grad.layout(self.mask.clone()).reshape(&rhs.shape().dims);
     (lgrad, rgrad)
   }
 }
