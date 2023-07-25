@@ -140,6 +140,10 @@ impl<T: Inner> Tensor<T> {
     self.data.read().clone()
   }
 
+  pub fn shared_with(&self, other: &Self) -> bool {
+    RcT::ptr_eq(&self.data, &other.data)
+  }
+
   pub fn contiguous(&self) -> Self {
     if self.shape.contiguous() {
       self.clone()
@@ -281,7 +285,7 @@ impl<T: Inner> Tensor<T> {
     //XXX Broadcast
     debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not assign {} tensor to {} tensor", other.shape, self.shape);
-    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
+    if self.shared_with(other) { panic!("Tensor was fed from shared storage") }
     //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();

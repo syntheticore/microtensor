@@ -101,7 +101,11 @@ impl<T: Real> Node<T> {
           op.run(&tensors)
         },
       };
-      self.cell.data.assign(&value);
+      if !self.cell.data.shared_with(&value) {
+        self.cell.data.assign(&value);
+        // When our tensor shares storage with its predecessors,
+        // that means our value gets calculated using strides from their storage. No need to assign.
+      }
     }
   }
 
