@@ -18,8 +18,10 @@
 //! broadcasted without actually copying any data in most situations.
 //!
 //! - **Graph recycling** — Computation graphs, created by tracing an eager computation,
-//! can be reevaluated at a later time with new input data. They can also be serialized
+//! can be re-evaluated at a later time, with new input data. They can also be serialized
 //! and loaded elsewhere, without access to the original code.
+//!
+//! - **Optimization** — Includes a range of standard optimizers, such as ADAM and Nesterov.
 //!
 //! # Examples
 //!
@@ -27,7 +29,7 @@
 //! ```
 //! use microtensor::{prelude::*, Tensor};
 //!
-//! // Create variables from tensors
+//! // Create trainable variables from tensors
 //! let w = Tensor::randn(&[2, 16]).trained();
 //! let b = Tensor::zeros(&[16]).trained();
 //!
@@ -99,7 +101,7 @@ mod variable;
 
 pub mod ops;
 pub mod scalar;
-pub mod prelude;
+pub mod optimize;
 
 pub use shape::Shape;
 pub use tensor::Tensor;

@@ -13,7 +13,7 @@
 // If you need that kind of flexibility in your model, please check the
 // 'perceptron_eager' example!
 
-use microtensor::{prelude::*, Tensor, Variable};
+use microtensor::{ ops::*, Tensor, Variable };
 
 fn dense_layer(input: &Variable<f32>, size: usize) -> Variable<f32> {
   let weights = (Tensor::randn(&[input.dim(-1), size]) / size as f32).trained();
@@ -43,8 +43,8 @@ fn main() {
     let labels = (Tensor::rand(&[32]) * 10.0).cast::<u8>().one_hot(10);
 
     // Feed existing computation graph with new inputs
-    image_input.feed(&images);
-    label_input.feed(&labels);
+    image_input.assign(&images);
+    label_input.assign(&labels);
 
     // Recompute output and loss
     loss.forward();

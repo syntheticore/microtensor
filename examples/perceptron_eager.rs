@@ -13,7 +13,7 @@
 // might not yield the same results as running the model directly, when using
 // this approach.
 
-use microtensor::{prelude::*, Tensor, Variable};
+use microtensor::{ ops::*, Tensor, Variable };
 
 struct DenseLayer {
   weights: Variable<f32>,

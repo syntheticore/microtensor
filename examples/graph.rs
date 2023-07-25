@@ -4,7 +4,7 @@
 // The graph can then be loaded elsewhere in its entirety,
 // without access to the original code.
 
-use microtensor::{ prelude::*, Tensor, Graph };
+use microtensor::{ ops::*, Tensor, Graph };
 
 fn main() {
   let filename = "model.nn";
