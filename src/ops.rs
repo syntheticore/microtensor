@@ -179,8 +179,8 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.reshape(&[0]).squeeze_all()
   }
 
-  fn windows(&self, shape: &Shape) -> Self {
-    self.layout(self.shape().windows(shape))
+  fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
+    self.layout(self.shape().windows(shape, step))
   }
 
   // fn transpose_vec(&self, extend_front: bool) -> Self {
@@ -208,6 +208,10 @@ where
 
   fn zeros(shape: &[usize]) -> Self {
     Self::fill(shape, I::zero())
+  }
+
+  fn max_pool(&self, kernel: &[usize]) -> Self {
+    self.windows(&Shape::new(kernel), kernel).max(-2)
   }
 }
 
@@ -304,25 +308,34 @@ where
   //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   // }
 
-  fn convolve(&self, kernels: &Self, bias: &Self) -> Self {
+  fn convolve(&self, kernels: &Self, step: &[usize], bias: Option<&Self>) -> Self {
     let kernel_width = kernels.dim(-2);
     let kernel_height = kernels.dim(-1);
     let out_width = (self.dim(-2) - kernel_width) + 1;
     let out_height = (self.dim(-1) - kernel_height) + 1;
 
     let windows = self
-      .windows(kernels.shape())
+      .windows(kernels.shape(), step)
       .reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize])
       .transpose(-2, -1)
       .unsqueeze(2);
 
-    let flat_kernels = kernels.reshape_keep(&[-1, -1, 0]);
+    let flat_kernels = kernels.unsqueeze(-3).reshape_keep(&[-1, -1, 0]);
 
     let flat_kernels = flat_kernels.broadcast(windows.shape(), Some(-2));
-    let windows = windows.broadcast(&flat_kernels.shape(), Some(-2));
+    let windows = windows.broadcast(flat_kernels.shape(), Some(-2));
 
     let conv = flat_kernels.mm(&windows);
-    let conv = &conv.transpose(-2, -1).squeeze_only(-1).transpose(1, 2).transpose(2, 3).sum(-1) + bias;
+    let mut conv = conv
+      .transpose(-2, -1)
+      .squeeze_only(-1)
+      .transpose(1, 2)
+      .transpose(2, 3)
+      .sum(-1);
+
+    if let Some(bias) = bias {
+      conv = conv + bias.unsqueeze(-1);
+    }
 
     conv.reshape(&[self.dim(0), kernels.dim(0), out_width, out_height])
   }

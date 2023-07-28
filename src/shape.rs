@@ -278,20 +278,21 @@ impl Shape {
     shape
   }
 
-  pub fn windows(&self, shape: &Shape) -> Self {
+  pub fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
     let window_shape = Tensor::vec(&[shape[-2], shape[-1]]);
-    let step = Tensor::vec(&[1,1]);
+    let step = Tensor::vec(step);
 
     let in_shape = Tensor::vec(&[self[-2], self[-1]]);
-    let win_indices_shape = ((in_shape - &window_shape) / step) + 1;
+    let win_indices_shape = ((in_shape - &window_shape) / &step) + 1;
 
-    let frame_strides = [self.stride(-2), self.stride(-1)];
     let batch_strides = &self.strides[0..self.strides.len() - 2];
+    let strides = [self.stride(-2), self.stride(-1)];
+    let frame_strides = Tensor::vec(&[self.stride(-2), self.stride(-1)]) * step.cast();
 
     let batch_dims = &self.dims[0..self.dims.len() - 2];
 
     let new_shape = [batch_dims.to_vec(), win_indices_shape.into_raw(), window_shape.into_raw()].concat();
-    let strides = [batch_strides.to_vec(), frame_strides.to_vec(), frame_strides.to_vec()].concat();
+    let strides = [batch_strides.to_vec(), frame_strides.into_raw(), strides.to_vec()].concat();
 
     Self::strided(&new_shape, &strides)
   }
