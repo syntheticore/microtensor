@@ -264,6 +264,14 @@ where
     (self - &mean).sqr().mean(dim)
   }
 
+  fn swish(&self, beta: &Self) -> Self {
+    self * &(self * beta).sigmoid()
+  }
+
+  fn silu(&self) -> Self {
+    self.swish(&Self::scalar(I::one()))
+  }
+
   fn softmax(&self, dim: isize) -> Self {
     let max = self.max(dim).extend(self.rank());
     let exp = (self - &max).exp();
