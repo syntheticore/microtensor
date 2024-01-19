@@ -30,6 +30,7 @@ impl<T: Real> BaseOps<T> for Variable<T> {
   }
 
   fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self {
+    if self.shape().broadcast(&shape, ignore_from).dims == self.shape().dims { return self.clone() }
     self.unary_op(Broadcast { dims: shape.dims.clone(), ignore_from })
   }
 
@@ -39,6 +40,7 @@ impl<T: Real> BaseOps<T> for Variable<T> {
 
   fn squeeze(&self, squeezed: &[isize]) -> Self {
     let shape = self.shape().squeeze(squeezed);
+    if shape.dims == self.shape().dims { return self.clone() }
     self.reshape(&shape.dims)
   }
 

@@ -17,7 +17,7 @@ pub trait Cops<I: Numeric> {
 /// Differentiable mid-level operations that are also implemented
 /// for non-differentiable [Inner] types.
 
-pub trait BaseOps<I: Inner>: Clone + std::fmt::Display {
+pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
   fn scalar(item: I) -> Self;
   fn fill(shape: &[usize], filler: I) -> Self;
   fn shape(&self) -> &Shape;
@@ -325,20 +325,18 @@ where
     let windows = self
       .windows(kernels.shape(), step)
       .reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize])
-      .transpose(-2, -1)
-      .unsqueeze(2);
+      .transpose(-2, -1);
 
-    let flat_kernels = kernels.unsqueeze(-3).reshape_keep(&[-1, -1, 0]);
-
-    let flat_kernels = flat_kernels.broadcast(windows.shape(), Some(-2));
-    let windows = windows.broadcast(flat_kernels.shape(), Some(-2));
+    let flat_kernels = kernels
+      .unsqueeze(-3)
+      .reshape_keep(&[-1, -1, 0])
+      .transpose(0, 1);
 
     let conv = flat_kernels.mm(&windows);
+
     let mut conv = conv
-      .transpose(-2, -1)
-      .squeeze_only(-1)
       .transpose(1, 2)
-      .transpose(2, 3)
+      .transpose(-2, -1)
       .sum(-1);
 
     if let Some(bias) = bias {

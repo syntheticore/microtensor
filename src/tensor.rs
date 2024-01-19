@@ -413,23 +413,23 @@ impl<T: Numeric> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  pub fn add(&self, rhs: &Self) -> Self {
+  pub(crate) fn add(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a + b )
   }
 
-  pub fn sub(&self, rhs: &Self) -> Self {
+  pub(crate) fn sub(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a - b )
   }
 
-  pub fn mul(&self, rhs: &Self) -> Self {
+  pub(crate) fn mul(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a * b )
   }
 
-  pub fn div(&self, rhs: &Self) -> Self {
+  pub(crate) fn div(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a / b )
   }
 
-  pub fn rem(&self, rhs: &Self) -> Self {
+  pub(crate) fn rem(&self, rhs: &Self) -> Self {
     self.zip(rhs, |(a, b)| a % b )
   }
 
@@ -478,6 +478,7 @@ impl<T: Numeric> Tensor<T> {
     })
   }
 
+  //XXX Accept tensors as bounds, replace #max_with
   pub fn clamp(&self, min: T, max: T) -> Self {
     self.vectorize(|a| if a < min { min } else if a > max { max } else { a } )
   }

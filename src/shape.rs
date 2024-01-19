@@ -81,12 +81,11 @@ impl Shape {
   }
 
   pub fn contiguous(&self) -> bool {
-    //XXX unsqeezed dims don't affect contiguity
     self.strides == Self::make_strides(&self.dims)
   }
 
   pub fn complete(&self) -> bool {
-    self.contiguous() && self.offset == 0
+    self.offset == 0 && self.contiguous()
   }
 
   pub fn at_or(&self, idx: isize, or: usize) -> usize {
