@@ -31,7 +31,7 @@ fn main() {
   let image_input = Tensor::zeros(&[32, 28 * 28]).tracked();
   let output = perceptron(&image_input);
 
-  // Define the loss to me minimized
+  // Define the loss to be minimized
   let label_input = Tensor::zeros(&[32, 10]).tracked();
   let loss = (&label_input - &output).sqr().mean(0);
 
@@ -39,7 +39,7 @@ fn main() {
   let learning_rate = 0.01;
   for _ in 0..100 {
     // Insert real training data here
-    let images = Tensor::ones(&[32, 28 * 28]).tracked();
+    let images = Tensor::ones(&[32, 28 * 28]);
     let labels = (Tensor::rand(&[32]) * 10.0).cast::<u8>().one_hot(10);
 
     // Feed existing computation graph with new inputs

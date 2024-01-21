@@ -41,8 +41,8 @@ fn load_model(filename: &str) {
   // Updating the entire graph in this way is more efficient
   // than calling #forward on each individual output.
   graph.run(&[
-    &Tensor::vec(&[5.0, 6.0]).tracked(),
-    &Tensor::randn(&[16]).tracked(),
+    &Tensor::vec(&[5.0, 6.0]),
+    &Tensor::randn(&[16]),
   ]);
 
   // Get new output..

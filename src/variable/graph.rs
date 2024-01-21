@@ -8,7 +8,8 @@ use serde::{Serialize, Deserialize, de::DeserializeOwned};
 use crate::{
   internal::*,
   scalar::Real,
-  variable::{ Variable, Node, NodeCell, Op }
+  variable::{ Variable, Node, NodeCell, Op },
+  Tensor,
 };
 
 
@@ -30,12 +31,12 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     }
   }
 
-  pub fn run(&self, inputs: &[&Variable<T>]) {
+  pub fn run(&self, inputs: &[&Tensor<T>]) {
     for (input, data) in self.inputs.iter().zip(inputs) {
       input.assign(data);
     }
-    for output in &self.outputs {
-      output.forward(); //XXX Don't calculate entire graph multiple times
+    for node in self.history() {
+      node.forward();
     }
   }
 
@@ -47,14 +48,6 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
       .concat();
     history.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap() );
     history.into_iter().unique_by(|a| a.id ).collect()
-  }
-
-  pub fn parameters(&self) -> Vec<Variable<T>> {
-    self.history()
-      .into_iter()
-      .filter(|node| node.trainable )
-      .map(|node| Variable { node } )
-      .collect()
   }
 
   pub fn load(filename: &str) -> io::Result<Self> {
