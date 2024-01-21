@@ -281,16 +281,26 @@ impl<T: Inner> Tensor<T> {
   //   Self { shape, data}
   // }
 
-  pub fn assign(&self, other: &Self) {
-    //XXX Broadcast
+  pub fn op_assign(&self, other: &Self, cb: impl Fn(&mut T, T)) {
     debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not assign {} tensor to {} tensor", other.shape, self.shape);
     if self.shared_with(other) { panic!("Tensor was fed from shared storage") }
     //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();
-    for (i, j) in self.shape.iter().zip(other.shape.iter()) {
-      data[i] = other_data[j].clone(); //XXX measure performance
+    for (i, j) in self.shape.iter().zip(other.shape.broadcast(&self.shape, None).iter()) {
+      cb(&mut data[i], other_data[j].clone());
+    }
+  }
+
+  pub fn assign(&self, other: &Self) {
+    self.op_assign(other, |a, b| *a = b )
+  }
+
+  pub fn refill(&self, filler: T) {
+    let mut data = self.raw_mut();
+    for i in self.shape.iter() {
+      data[i] = filler.clone();
     }
   }
 
@@ -494,31 +504,31 @@ impl<T: Numeric> Tensor<T> {
 
 impl<T: Numeric> std::ops::AddAssign for Tensor<T> {
   fn add_assign(&mut self, rhs: Self) {
-    self.assign(&self.add(&rhs));
+    self.op_assign(&rhs, |a, b| *a += b );
   }
 }
 
 impl<T: Numeric> std::ops::SubAssign for Tensor<T> {
   fn sub_assign(&mut self, rhs: Self) {
-    self.assign(&self.sub(&rhs));
+    self.op_assign(&rhs, |a, b| *a -= b );
   }
 }
 
 impl<T: Numeric> std::ops::MulAssign for Tensor<T> {
   fn mul_assign(&mut self, rhs: Self) {
-    self.assign(&self.mul(&rhs));
+    self.op_assign(&rhs, |a, b| *a *= b );
   }
 }
 
 impl<T: Numeric> std::ops::DivAssign for Tensor<T> {
   fn div_assign(&mut self, rhs: Self) {
-    self.assign(&self.div(&rhs));
+    self.op_assign(&rhs, |a, b| *a /= b );
   }
 }
 
 impl<T: Numeric> std::iter::Sum for Tensor<T> {
   fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
-    iter.fold(Self::zeros(&[1]), |acc, a| acc.add(&a) )
+    iter.fold(Self::zeros(&[1]), |acc, a| a.add(&acc) )
   }
 }
 

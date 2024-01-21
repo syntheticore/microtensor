@@ -16,6 +16,6 @@ fn main() {
     let loss = ((x.mm(&w) + &b).sigmoid() - 0.5).sqr().mean(0);
 
     // Optimize
-    optimizer.minimize(&loss, &loss.parameters());
+    optimizer.minimize(&loss, loss.parameters());
   }
 }

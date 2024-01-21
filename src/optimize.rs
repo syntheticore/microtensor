@@ -29,20 +29,19 @@ impl<R: Real, S: Strategy<R>> Optimizer<R, S> {
     Self { strategy, learning_rate, step: 1 }
   }
 
-  pub fn minimize(&mut self, loss: &Variable<R>, params: &[Variable<R>]) {
+  pub fn minimize(&mut self, loss: &Variable<R>, params: Vec<Variable<R>>) {
     // Compute gradients
     loss.backward();
 
     // Optimize individual parameters
-    for param in params {
+    for mut param in params {
       param.grad().expect("Non-trainable parameters cannot be optimized");
 
       // Execute strategy
       let change = self.strategy.update(&param, self.learning_rate, self.step);
 
       // Apply change
-      let weights = param.tensor();
-      weights.assign(&(weights + change));
+      param += change;
     }
 
     // Reset gradients
