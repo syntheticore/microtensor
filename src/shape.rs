@@ -278,6 +278,7 @@ impl Shape {
   }
 
   pub fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
+    debug_assert!(self.contiguous());
     debug_assert!(self[-2] >= shape[-2] && self[-2] >= shape[-2], "{self} Tensor cannot fit {shape} window");
 
     let window_shape = Tensor::vec(&[shape[-2], shape[-1]]);
@@ -295,7 +296,10 @@ impl Shape {
     let new_shape = [batch_dims.to_vec(), win_indices_shape.into_raw(), window_shape.into_raw()].concat();
     let strides = [batch_strides.to_vec(), frame_strides.into_raw(), strides.to_vec()].concat();
 
-    Self::strided(&new_shape, &strides)
+    let mut out = Self::strided(&new_shape, &strides);
+    out.offset += self.offset;
+
+    out
   }
 }
 
