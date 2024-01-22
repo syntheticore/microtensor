@@ -68,6 +68,7 @@ pub trait RealOps<I: Real>: NumericOps<I> + SignedOps<I> {
 
 
 fn make_ranges(indices: &[isize], shape: &Shape) -> Vec<Range<isize>> {
+  debug_assert!(indices.len() <= shape.rank(), "Too many indices {indices:?} for {shape} Tensor");
   indices.iter()
     .zip(&shape.dims)
     .map(|(&idx, &dim)| {
@@ -180,7 +181,12 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
   }
 
   fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
-    self.layout(self.shape().windows(shape, step))
+    let windows = if self.shape().contiguous() {
+      self.shape().clone()
+    } else {
+      Shape::new(&self.shape().dims)
+    }.windows(shape, step);
+    self.layout(windows)
   }
 
   // fn transpose_vec(&self, extend_front: bool) -> Self {
@@ -212,6 +218,21 @@ where
 
   fn max_pool(&self, kernel: &[usize]) -> Self {
     self.windows(&Shape::new(kernel), kernel).max(-2)
+  }
+
+  fn pad(&self, padding: &[usize]) -> Self {
+    let mut dims = self.shape().dims.clone();
+    let dimlen = dims.len();
+    let padlen = padding.len();
+    for i in 0..padlen {
+      let p = padding[i];
+      dims[dimlen - (padlen - i)] += p * 2;
+    }
+    let out = Self::zeros(&dims);
+    let ranges: Vec<_> = padding.iter().map(|&p| p as isize .. -1 - p as isize ).collect();
+    let mask = out.range_back(&ranges);
+    out.assign_masked(self, mask.shape());
+    out
   }
 }
 
@@ -316,13 +337,20 @@ where
   //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   // }
 
-  fn convolve(&self, kernels: &Self, step: &[usize], bias: Option<&Self>) -> Self {
+  fn convolve2d(&self, kernels: &Self, step: &[usize], bias: Option<&Self>, padding: bool) -> Self {
     let kernel_width = kernels.dim(-2);
     let kernel_height = kernels.dim(-1);
-    let out_width = (self.dim(-2) - kernel_width) + 1;
-    let out_height = (self.dim(-1) - kernel_height) + 1;
 
-    let windows = self
+    let padded = if padding {
+      self.pad(&[(kernel_width - 1) / 2, (kernel_height - 1) / 2])
+    } else {
+      self.clone()
+    };
+
+    let out_width = (padded.dim(-2) - kernel_width) + 1;
+    let out_height = (padded.dim(-1) - kernel_height) + 1;
+
+    let windows = padded
       .windows(kernels.shape(), step)
       .reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize])
       .transpose(-2, -1);
@@ -343,7 +371,7 @@ where
       conv = conv + bias.unsqueeze(-1);
     }
 
-    conv.reshape(&[self.dim(0), kernels.dim(0), out_width, out_height])
+    conv.reshape(&[padded.dim(0), kernels.dim(0), out_width, out_height])
   }
 }
 

@@ -29,7 +29,7 @@ impl<R: Real, S: Strategy<R>> Optimizer<R, S> {
     Self { strategy, learning_rate, step: 1 }
   }
 
-  pub fn minimize(&mut self, loss: &Variable<R>, params: Vec<Variable<R>>) {
+  pub fn minimize(&mut self, loss: &Variable<R>, params: Vec<Variable<R>>, reset: bool) {
     // Compute gradients
     loss.backward();
 
@@ -45,7 +45,7 @@ impl<R: Real, S: Strategy<R>> Optimizer<R, S> {
     }
 
     // Reset gradients
-    loss.reset();
+    if reset { loss.reset() }
 
     self.step += 1;
   }

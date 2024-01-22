@@ -15,7 +15,7 @@ fn main() {
     let x = Tensor::vec(&[1.0, 2.0]).tracked();
     let loss = ((x.mm(&w) + &b).sigmoid() - 0.5).sqr().mean(0);
 
-    // Optimize
-    optimizer.minimize(&loss, loss.parameters());
+    // Back-prop, optimize and reset gradients
+    optimizer.minimize(&loss, loss.parameters(), true);
   }
 }

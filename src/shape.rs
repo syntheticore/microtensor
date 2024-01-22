@@ -121,7 +121,7 @@ impl Shape {
   }
 
   pub fn view(&self, shape: &[usize]) -> Self {
-    debug_assert!(self.contiguous()); //XXX
+    debug_assert!(self.contiguous());
     debug_assert!(shape.iter().filter(|&n| *n == 0 ).count() <= 1, "Multiple placeholders in shape {:?}", shape);
     // Calculate size of placeholder
     let dims: Vec<usize> = shape.iter()
@@ -278,6 +278,8 @@ impl Shape {
   }
 
   pub fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
+    debug_assert!(self[-2] >= shape[-2] && self[-2] >= shape[-2], "{self} Tensor cannot fit {shape} window");
+
     let window_shape = Tensor::vec(&[shape[-2], shape[-1]]);
     let step = Tensor::vec(step);
 
