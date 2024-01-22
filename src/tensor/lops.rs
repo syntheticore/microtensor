@@ -84,12 +84,16 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     debug_assert!(mask.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not assign {} tensor to {} mask", other.shape, mask);
     if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
-    let mut data = self.raw_mut();
-    let other_data = other.raw();
-    for (i, j) in mask.iter().zip(other.shape.iter()) {
-      data[i] = other_data[j].clone();
+
+    let out = Tensor::from_shape(self.shape.clone(), self.raw().clone());
+    {
+      let mut data = out.raw_mut();
+      let other_data = other.raw();
+      for (i, j) in mask.iter().zip(other.shape.iter()) {
+        data[i] = other_data[j].clone();
+      }
     }
-    self.clone()
+    out
   }
 
   fn layout(&self, mut shape: Shape) -> Self {

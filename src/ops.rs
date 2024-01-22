@@ -231,8 +231,7 @@ where
     let out = Self::zeros(&dims);
     let ranges: Vec<_> = padding.iter().map(|&p| p as isize .. -1 - p as isize ).collect();
     let mask = out.range_back(&ranges);
-    out.assign_masked(self, mask.shape());
-    out
+    out.assign_masked(self, mask.shape())
   }
 }
 
