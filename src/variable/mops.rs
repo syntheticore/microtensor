@@ -57,11 +57,17 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.binary_op(Concat { dim }, rhs)
   }
 
-  fn assign_masked(&self, rhs: &Self, mask: &Shape) -> Self {
-    self.binary_op(AssignMasked { mask: mask.clone() }, rhs)
+  fn assign_masked(&self, rhs: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
+    let mask = cb(&Shape::new(&self.shape().dims));
+    self.binary_op(AssignMasked { mask }, rhs)
   }
 
-  fn layout(&self, shape: Shape) -> Self {
+  fn layout(&self, cb: impl Fn(&Shape) -> Shape) -> Self {
+    let shape = cb(& if self.shape().contiguous() {
+      self.shape().clone()
+    } else {
+      Shape::new(&self.shape().dims)
+    });
     self.unary_op(Layout { shape })
   }
 }
@@ -463,13 +469,13 @@ pub struct AssignMasked {
 
 impl<T: Real> BinaryOp<T> for AssignMasked {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.assign_masked(rhs, &self.mask)
+    lhs.assign_masked(rhs, |_| self.mask.clone() )
   }
 
-  fn derive(&self, _lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
+  fn derive(&self, _lhs: &Tensor<T>, _rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
     let lgrad = grad.detach();
-    lgrad.layout(self.mask.clone()).assign(&Tensor::zeros(&self.mask.dims));
-    let rgrad = grad.layout(self.mask.clone()).reshape(&rhs.shape().dims);
+    lgrad.layout(|_| self.mask.clone() ).assign(&Tensor::scalar(T::zero()));
+    let rgrad = grad.complete().layout(|_| self.mask.clone() );
     (lgrad, rgrad)
   }
 }
@@ -482,7 +488,7 @@ pub struct Layout {
 
 impl<T: Real> UnaryOp<T> for Layout {
   fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.layout(self.shape.clone())
+    lhs.layout(|_| self.shape.clone() )
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
@@ -490,7 +496,7 @@ impl<T: Real> UnaryOp<T> for Layout {
     {
       let mut raw = out.raw_mut();
       for (i, g) in self.shape.iter().zip(grad.param_iter()) {
-        raw[i] += g;
+        raw[i - self.shape.offset] += g;
       }
     }
     out

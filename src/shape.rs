@@ -277,12 +277,12 @@ impl Shape {
     shape
   }
 
-  pub fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
+  pub fn windows(&self, shape: &Shape, step: [usize; 2]) -> Self {
     debug_assert!(self.contiguous());
     debug_assert!(self[-2] >= shape[-2] && self[-2] >= shape[-2], "{self} Tensor cannot fit {shape} window");
 
     let window_shape = Tensor::vec(&[shape[-2], shape[-1]]);
-    let step = Tensor::vec(step);
+    let step = Tensor::vec(&step);
 
     let in_shape = Tensor::vec(&[self[-2], self[-1]]);
     let win_indices_shape = ((in_shape - &window_shape) / &step) + 1;

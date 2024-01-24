@@ -80,12 +80,12 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     Self::new(&dims_l, data)
   }
 
-  fn assign_masked(&self, other: &Self, mask: &Shape) -> Self {
+  fn assign_masked(&self, other: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
+    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
+    let out = self.detach();
+    let mask = cb(out.shape());
     debug_assert!(mask.squeeze_all().dims == other.shape.squeeze_all().dims,
       "Could not assign {} tensor to {} mask", other.shape, mask);
-    if RcT::ptr_eq(&self.data, &other.data) { panic!("Tensor was fed from shared storage") }
-
-    let out = Tensor::from_shape(self.shape.clone(), self.raw().clone());
     {
       let mut data = out.raw_mut();
       let other_data = other.raw();
@@ -96,11 +96,10 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     out
   }
 
-  fn layout(&self, mut shape: Shape) -> Self {
+  fn layout(&self, cb: impl Fn(&Shape) -> Shape) -> Self {
     //XXX check if shape overflows self's memory
     let this = self.contiguous();
-    shape.offset += this.shape.offset;
-    Self { shape, data: this.data.clone() }
+    Self { shape: cb(&this.shape), data: this.data.clone() }
   }
 }
 

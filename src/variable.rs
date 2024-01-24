@@ -126,7 +126,7 @@ impl<T: Real> Node<T> {
       };
       for (change, prev) in changes.iter().zip(self.previous.iter()) {
         if let Some(grad) = &prev.cell.grad {
-          grad.assign(&grad.add(change));
+          grad.op_assign(&change, |a, b| *a += b );
         }
       }
     }

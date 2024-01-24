@@ -28,8 +28,8 @@ pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
   fn unsqueeze(&self, dim: isize) -> Self; //XXX multiple dims
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
   fn concat(&self, rhs: &Self, dim: isize) -> Self;
-  fn assign_masked(&self, rhs: &Self, shape: &Shape) -> Self;
-  fn layout(&self, shape: Shape) -> Self;
+  fn assign_masked(&self, rhs: &Self, cb: impl Fn(&Shape) -> Shape) -> Self;
+  fn layout(&self, cb: impl Fn(&Shape) -> Shape) -> Self;
 }
 
 
@@ -112,7 +112,11 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
   }
 
   fn set(&mut self, indices: &[isize], other: &Self) -> Self {
-    self.assign_masked(other, self.at(indices).shape())
+    self.assign_masked(other, |shape|
+      shape
+        .range(&make_ranges(indices, shape))
+        .squeeze_first(indices.len())
+    )
   }
 
   fn squeeze_only(&self, dim: isize) -> Self {
@@ -180,13 +184,8 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.reshape(&[0]).squeeze_all()
   }
 
-  fn windows(&self, shape: &Shape, step: &[usize]) -> Self {
-    let windows = if self.shape().contiguous() {
-      self.shape().clone()
-    } else {
-      Shape::new(&self.shape().dims)
-    }.windows(shape, step);
-    self.layout(windows)
+  fn windows(&self, shape: &Shape, step: [usize; 2]) -> Self {
+    self.layout(|shap| shap.windows(shape, step) )
   }
 
   // fn transpose_vec(&self, extend_front: bool) -> Self {
@@ -216,8 +215,8 @@ where
     Self::fill(shape, I::zero())
   }
 
-  fn max_pool(&self, kernel: &[usize]) -> Self {
-    self.windows(&Shape::new(kernel), kernel).max(-2)
+  fn max_pool(&self, kernel: [usize; 2]) -> Self {
+    self.windows(&Shape::new(&kernel), kernel).max(-2)
   }
 
   fn pad(&self, padding: &[usize]) -> Self {
@@ -231,7 +230,7 @@ where
     let out = Self::zeros(&dims);
     let ranges: Vec<_> = padding.iter().map(|&p| p as isize .. -1 - p as isize ).collect();
     let mask = out.range_back(&ranges);
-    out.assign_masked(self, mask.shape())
+    out.assign_masked(self, |_| mask.shape().clone() ) // Ok, because we know 'out' had standard layout before building mask
   }
 }
 
@@ -336,7 +335,7 @@ where
   //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
   // }
 
-  fn convolve2d(&self, kernels: &Self, step: &[usize], bias: Option<&Self>, padding: bool) -> Self {
+  fn convolve2d(&self, kernels: &Self, step: [usize; 2], bias: Option<&Self>, padding: bool) -> Self {
     let kernel_width = kernels.dim(-2);
     let kernel_height = kernels.dim(-1);
 
