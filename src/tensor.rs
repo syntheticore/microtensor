@@ -282,13 +282,14 @@ impl<T: Inner> Tensor<T> {
   // }
 
   pub fn op_assign(&self, other: &Self, cb: impl Fn(&mut T, T)) {
-    debug_assert!(self.shape.squeeze_all().dims == other.shape.squeeze_all().dims,
-      "Could not assign {} tensor to {} tensor", other.shape, self.shape);
     if self.shared_with(other) { panic!("Tensor was fed from shared storage") }
     //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();
-    for (i, j) in self.shape.iter().zip(other.shape.broadcast(&self.shape, None).iter()) {
+    let other_shape = other.shape.broadcast(&self.shape, None);
+    debug_assert!(self.shape.squeeze_all().dims == other_shape.squeeze_all().dims,
+      "Could not assign {} tensor to {} tensor", other.shape, self.shape);
+    for (i, j) in self.shape.iter().zip(other_shape.iter()) {
       cb(&mut data[i], other_data[j].clone());
     }
   }
