@@ -136,7 +136,7 @@ impl Shape {
         n
       })
       .collect();
-    debug_assert_eq!(dims.iter().product::<usize>(), self.size());
+    debug_assert!(dims.iter().product::<usize>() == self.size(), "Cannot view {} Tensor as {:?}", self, shape);
     let strides = Self::make_strides(&dims);
     Self { dims, strides, offset: self.offset }
   }
@@ -309,6 +309,16 @@ impl std::ops::Index<isize> for Shape {
   fn index<'a>(&'a self, i: isize) -> &'a usize {
     let idx = negative_index(i, self.rank(), false);
     &self.dims[idx]
+  }
+}
+
+impl std::ops::Index<Range<isize>> for Shape {
+  type Output = [usize];
+
+  fn index<'a>(&'a self, range: Range<isize>) -> &'a [usize] {
+    let start = negative_index(range.start, self.rank(), false);
+    let end = negative_index(range.end, self.rank(), true);
+    &self.dims[start..end]
   }
 }
 
