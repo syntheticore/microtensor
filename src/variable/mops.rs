@@ -581,11 +581,7 @@ fn uncollapse<T: Real>(dim: isize, tensor: &Tensor<T>, grad: &Tensor<T>) -> Tens
   let rank = tensor.shape().rank();
   let dim = negative_index(dim, rank, false);
   let removed = rank - dim;
-  let mut grad = grad.clone();
-  for _ in 0..removed {
-    grad = grad.unsqueeze(-1);
-  }
-  grad
+  grad.unsqueeze_n(removed, -1)
 }
 
 
@@ -614,8 +610,9 @@ impl<T: Real> UnaryOp<T> for Min {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    // grad * lhs.min_index(self.dim).one_hot(lhs.shape()[self.dim])
-    uncollapse(self.dim, lhs, grad) //XXX
+    let indices: Tensor<usize> = lhs.argmin(self.dim);
+    let removed_flat_size = lhs.shape()[self.dim..-1].iter().product();
+    uncollapse(self.dim, lhs, grad) * indices.one_hot(removed_flat_size).reshape(&lhs.shape().dims)
   }
 }
 
@@ -631,7 +628,9 @@ impl<T: Real> UnaryOp<T> for Max {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    uncollapse(self.dim, lhs, grad) //XXX
+    let indices: Tensor<usize> = lhs.argmax(self.dim);
+    let removed_flat_size = lhs.shape()[self.dim..-1].iter().product();
+    uncollapse(self.dim, lhs, grad) * indices.one_hot(removed_flat_size).reshape(&lhs.shape().dims)
   }
 }
 

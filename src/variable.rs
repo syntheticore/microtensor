@@ -13,7 +13,7 @@ use crate::{
   internal::*,
   tensor::Tensor,
   scalar::Real,
-  ops::{ BaseOps, NumericOps, BaseHops, NumericHops, RealHops },
+  ops::{ BaseOps, NumericOps, SignedOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -49,7 +49,7 @@ pub trait MultiOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize +
 /// as well as the operation used to create it.
 
 #[derive(Debug)]
-struct Node<T: Real + 'static> {
+struct Node<T: Real> {
   pub id: usize,
   cell: NodeCell<T>,
   op: Option<Op<T>>,
@@ -57,14 +57,14 @@ struct Node<T: Real + 'static> {
   trainable: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 struct NodeCell<T: Real> {
   data: Tensor<T>,
   grad: Option<Tensor<T>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-enum Op<T: Real + 'static> {
+enum Op<T: Real> {
   Binary(serde_traitobject::Box<dyn BinaryOp<T>>),
   Unary(serde_traitobject::Box<dyn UnaryOp<T>>),
   Multi(serde_traitobject::Box<dyn MultiOp<T>>),
@@ -145,7 +145,7 @@ impl<T: Real> Node<T> {
 /// will always return another Variable.
 
 #[derive(Debug, Clone)]
-pub struct Variable<T: Real + 'static> {
+pub struct Variable<T: Real> {
   node: RcT<Node<T>>,
 }
 
@@ -181,18 +181,18 @@ impl<T: Real> PartialEq for Variable<T> {
 //   }
 // }
 
-impl<T: Real + 'static> Variable<T> {
-  pub(crate) fn from_tensor(array: Tensor<T>, trainable: bool) -> Self {
+impl<T: Real> Variable<T> {
+  pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool) -> Self {
     Self {
       node: RcT::new(Node {
         id: make_id(),
         cell: NodeCell {
           grad: if trainable {
-            Some(Tensor::zeros(&array.shape().dims))
+            Some(Tensor::zeros(&tensor.shape().dims))
           } else {
             None
           },
-          data: array,
+          data: tensor,
         },
         op: None,
         previous: vec![],
@@ -206,11 +206,10 @@ impl<T: Real + 'static> Variable<T> {
         node: RcT::new(Node {
         id: make_id(),
         cell: NodeCell {
-          grad: grad.then(|| Tensor::zeros(&data.shape().dims) ),
+          grad: grad.then(|| Tensor::zeros(&data.shape().dims) ), //XXX Can be huge (#windows). Store as strided for ops that expand tensor.
           data,
         },
         op: Some(op),
-        // op: grad.then_some(op),
         previous,
         trainable: false,
       }),
@@ -329,7 +328,7 @@ impl<T: Real + 'static> Variable<T> {
   where
     F: Fn(&Self) -> Self
   {
-    let eps = T::from(1e-6).unwrap();
+    let eps = T::from(0.01).unwrap();
     let two = T::from(2.0).unwrap();
     // Generate random input
     let input = Tensor::randn(shape);
@@ -341,16 +340,16 @@ impl<T: Real + 'static> Variable<T> {
     let grad = var.grad().unwrap().detach();
     // Compute gradient numerically for every param in input
     let len = input.shape().size();
-    let mut diff = T::zero();
+    let mut num_grad = vec![T::from(0.0).unwrap(); len];
     for i in 0..len {
       let epst = Tensor::hot_encode(i, len).reshape(shape) * eps;
       let prev = generator(&(&input - &epst).tracked()).sum(0);
       let next = generator(&(&input + &epst).tracked()).sum(0);
-      let change = (next.item() - prev.item()) / (two * eps);
-      diff += (grad.raw()[i] - change).abs();
+      num_grad[i] = (next.item() - prev.item()) / (two * eps);
     }
+    let num_grad = Tensor::new(&grad.shape().dims, num_grad);
     // Return average difference between both gradients
-    diff / T::from(len).unwrap()
+    (grad - num_grad).abs().mean(0).item()
   }
 
   pub fn statistics(&self) -> (usize, usize, usize, usize, usize) {

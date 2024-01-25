@@ -52,5 +52,5 @@ impl<T: Numeric + PrimInt> Integer for T {}
 /// This trait gets implemented automatically for all types
 /// that satisfy its parent traits.
 
-pub trait Real: Signed + num_traits::real::Real + SampleUniform {}
-impl<T: Signed + num_traits::real::Real + SampleUniform> Real for T {}
+pub trait Real: Signed + num_traits::real::Real + SampleUniform + 'static {}
+impl<T: Signed + num_traits::real::Real + SampleUniform + 'static> Real for T {}

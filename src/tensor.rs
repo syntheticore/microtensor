@@ -477,15 +477,23 @@ impl<T: Numeric> Tensor<T> {
 
   pub fn argmax<O: Integer + Unsigned>(&self, dim: isize) -> Tensor<O> {
     self.collapse(dim, |values| {
-      let mut max = T::zero();
-      let mut index = 0;
-      for (i, float) in values.param_iter().enumerate() {
-        if float > max {
-          max = float;
-          index = i;
-        }
-      }
-      O::from(index).unwrap()
+      O::from(values.param_iter()
+        .enumerate()
+        .max_by(|(_,a), (_,b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
+        .map(|(idx, _)| idx )
+        .unwrap()
+      ).unwrap()
+    })
+  }
+
+  pub fn argmin<O: Integer + Unsigned>(&self, dim: isize) -> Tensor<O> {
+    self.collapse(dim, |values| {
+      O::from(values.param_iter()
+        .enumerate()
+        .min_by(|(_,a), (_,b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
+        .map(|(idx, _)| idx )
+        .unwrap()
+      ).unwrap()
     })
   }
 
