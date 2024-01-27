@@ -32,11 +32,20 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     }
   }
 
-  pub fn run(&self, inputs: &[&Tensor<T>]) {
+  pub fn run(&mut self, output: usize, inputs: &[&Tensor<T>]) -> &Variable<T> {
+    self.run_history(inputs, self.outputs[output].history());
+    &self.outputs[output]
+  }
+
+  pub fn run_all(&mut self, inputs: &[&Tensor<T>]) {
+    self.run_history(inputs, self.history());
+  }
+
+  fn run_history(&self, inputs: &[&Tensor<T>], history: Vec<RcT<Node<T>>>) {
     for (input, data) in self.inputs.iter().zip(inputs) {
       input.assign(data);
     }
-    for node in self.history() {
+    for node in history {
       node.forward();
     }
   }
@@ -51,8 +60,32 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     history.into_iter().unique_by(|a| a.id ).collect()
   }
 
-  pub fn load(filename: &str) -> io::Result<Self> {
-    let bytes = fs::read(filename)?;
+  pub fn serialize(&self) -> Vec<u8> {
+    let history = self.history();
+
+    let history_dump = history.iter().map(|node| {
+      NodeDump {
+        id: node.id,
+        data: if node.trainable { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
+        grad: node.cell.grad.as_ref().and_then(|grad| Some(Tensor::scalar(T::zero()).broadcast(grad.shape(), None)) ),
+        op: node.op.clone(),
+        previous: node.previous.iter().map(|prev| prev.id ).collect(),
+        trainable: node.trainable,
+      }
+    }).collect();
+
+    let map_tensor = |tensor: &Variable<T>| tensor.node.id;
+
+    let graph_dump = GraphDump {
+      history: history_dump,
+      inputs: self.inputs.iter().map(map_tensor).collect(),
+      outputs: self.outputs.iter().map(map_tensor).collect(),
+    };
+
+    postcard::to_allocvec(&graph_dump).unwrap()
+  }
+
+  pub fn deserialize(bytes: Vec<u8>) -> Self {
     let tensor_dump: GraphDump<T> = postcard::from_bytes(&bytes).unwrap();
     let mut nodes: HashMap<usize, RcT<Node<T>>> = HashMap::new();
     for dump in tensor_dump.history {
@@ -71,38 +104,18 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     let map_tensor = |dump: usize| Variable {
       node: nodes[&dump].clone(),
     };
-    Ok(Graph {
+    Self {
       inputs: tensor_dump.inputs.into_iter().map(map_tensor).collect(),
       outputs: tensor_dump.outputs.into_iter().map(map_tensor).collect(),
-    })
+    }
   }
 
   pub fn save(&self, filename: &str) -> io::Result<()> {
-    let history = self.history();
+    fs::write(filename, self.serialize())
+  }
 
-    let history_dump = history.iter().map(|node| {
-      let op: Vec<u8> = postcard::to_allocvec(&node.op).unwrap();
-      let op = postcard::from_bytes(&op).unwrap();
-      NodeDump {
-        id: node.id,
-        data: if node.trainable { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
-        grad: node.cell.grad.as_ref().and_then(|grad| Some(Tensor::scalar(T::zero()).broadcast(grad.shape(), None)) ),
-        op,
-        previous: node.previous.iter().map(|prev| prev.id ).collect(),
-        trainable: node.trainable,
-      }
-    }).collect();
-
-    let map_tensor = |tensor: &Variable<T>| tensor.node.id;
-
-    let graph_dump = GraphDump {
-      history: history_dump,
-      inputs: self.inputs.iter().map(map_tensor).collect(),
-      outputs: self.outputs.iter().map(map_tensor).collect(),
-    };
-
-    let data: Vec<u8> = postcard::to_allocvec(&graph_dump).unwrap();
-    fs::write(filename, data)
+  pub fn load(filename: &str) -> io::Result<Self> {
+    Ok(Self::deserialize(fs::read(filename)?))
   }
 }
 

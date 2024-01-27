@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::fmt::Debug;
 
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, de::DeserializeOwned};
 
 mod mops;
 mod graph;
@@ -39,9 +39,26 @@ pub trait BinaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize 
 }
 
 
+/// Computational operation that can also compute its derivative.
+
 pub trait MultiOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
   fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T>;
   fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>>;
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+enum Op<T: Real> {
+  Binary(serde_traitobject::Box<dyn BinaryOp<T>>),
+  Unary(serde_traitobject::Box<dyn UnaryOp<T>>),
+  Multi(serde_traitobject::Box<dyn MultiOp<T>>),
+}
+
+impl<T: Real + Serialize + DeserializeOwned> Clone for Op<T> {
+  fn clone(&self) -> Self {
+    let op: Vec<u8> = postcard::to_allocvec(&self).unwrap();
+    postcard::from_bytes(&op).unwrap()
+  }
 }
 
 
@@ -61,13 +78,6 @@ struct Node<T: Real> {
 struct NodeCell<T: Real> {
   data: Tensor<T>,
   grad: Option<Tensor<T>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum Op<T: Real> {
-  Binary(serde_traitobject::Box<dyn BinaryOp<T>>),
-  Unary(serde_traitobject::Box<dyn UnaryOp<T>>),
-  Multi(serde_traitobject::Box<dyn MultiOp<T>>),
 }
 
 impl<T: Real> PartialEq for Node<T> {
@@ -203,7 +213,7 @@ impl<T: Real> Variable<T> {
 
   fn operation(op: Op<T>, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
     Self {
-        node: RcT::new(Node {
+      node: RcT::new(Node {
         id: make_id(),
         cell: NodeCell {
           grad: grad.then(|| Tensor::zeros(&data.shape().dims) ), //XXX Can be huge (#windows). Store as strided for ops that expand tensor.
