@@ -58,10 +58,11 @@ impl<T: Inner> PartialEq for Tensor<T> {
 }
 
 impl<T: Inner> Tensor<T> {
-  pub fn from_shape(shape: Shape, data: Vec<T>) -> Self {
-    debug_assert!(shape.size_raw() == data.len(),
-      "{} doesn't match data length {}", shape, data.len());
+  pub(crate) fn from_shared(shape: Shape, other: &Self) -> Self {
+    Self { shape, data: other.data.clone() }
+  }
 
+  pub(crate) fn from_shape_raw(shape: Shape, data: Vec<T>) -> Self {
     #[cfg(not(feature = "threading"))]
     let this = Self { shape, data: Rc::new(RefCell::new(data)) };
 
@@ -69,6 +70,13 @@ impl<T: Inner> Tensor<T> {
     let this = Self { shape, data: Arc::new(RwLock::new(data)) };
 
     this
+  }
+
+  pub fn from_shape(shape: Shape, data: Vec<T>) -> Self {
+    debug_assert!(shape.size_raw() == data.len(),
+      "{} doesn't match data length {}", shape, data.len());
+
+    Self::from_shape_raw(shape, data)
   }
 
   pub fn new(shape: &[usize], data: Vec<T>) -> Self {
@@ -90,15 +98,15 @@ impl<T: Inner> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  // pub fn rows(rows: &[Tensor<T>]) -> Self {
-  //   let mut dims = rows[0].shape.dims.clone();
-  //   dims.insert(0, rows.len());
-  //   let data = rows.iter()
-  //     .map(|row| row.detach().into_raw() )
-  //     .collect::<Vec<_>>()
-  //     .concat();
-  //   Self::new(&dims, data)
-  // }
+  pub fn fast_rows(rows: &[Tensor<T>]) -> Self {
+    let mut dims = rows[0].shape.dims.clone();
+    dims.insert(0, rows.len());
+    let data = rows.iter()
+      .map(|row| row.detach().into_raw() )
+      .collect::<Vec<_>>()
+      .concat();
+    Self::new(&dims, data)
+  }
 
   // pub fn stack(rows: &[Tensor<T>]) -> Self { //XXX write as Hop over concat
   //   let mut dims = rows[0].shape.dims.clone();
@@ -381,7 +389,7 @@ impl<T: Inner> Tensor<T> {
     self.unsqueeze(0).map(dim, |sub| {
       let mut sub = sub.to_vec(0);
       sub.shuffle(&mut rand::thread_rng());
-      Self::rows(&sub)
+      Self::fast_rows(&sub)
     }).squeeze_only(0)
   }
 }

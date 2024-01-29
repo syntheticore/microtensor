@@ -372,6 +372,9 @@ impl<T: Real> Variable<T> {
     let num_trainable_params = params.iter().map(|param| param.shape().size() ).sum();
     (num_nodes, num_ops, num_grads, num_variables, num_trainable_params)
   }
+
+  pub fn tracked(&self) -> Self { panic!("Tensor is already being tracked") }
+  pub fn trained(&self) -> Self { panic!("Tensor is already being tracked") }
 }
 
 impl<T: Real> std::ops::AddAssign<Tensor<T>> for Variable<T> {

@@ -66,11 +66,12 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     let history_dump = history.iter().map(|node| {
       NodeDump {
         id: node.id,
-        data: if node.trainable { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
+        data: if node.trainable || node.op.is_none() { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
         grad: node.cell.grad.as_ref().and_then(|grad| Some(Tensor::scalar(T::zero()).broadcast(grad.shape(), None)) ),
         op: node.op.clone(),
         previous: node.previous.iter().map(|prev| prev.id ).collect(),
         trainable: node.trainable,
+        was_shared: node.op.is_some() && node.previous.len() > 0 && node.cell.data.shared_with(&node.previous[0].cell.data),
       }
     }).collect();
 
@@ -89,14 +90,15 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     let tensor_dump: GraphDump<T> = postcard::from_bytes(&bytes).unwrap();
     let mut nodes: HashMap<usize, RcT<Node<T>>> = HashMap::new();
     for dump in tensor_dump.history {
+      let previous: Vec<_> = dump.previous.iter().map(|id| nodes[id].clone() ).collect();
       let node = Node {
         id: dump.id,
         cell: NodeCell {
-          data: dump.data.complete(),
-          grad: dump.grad.and_then(|grad| Some(grad.detach()) )
+          data: if dump.was_shared { Tensor::from_shared(dump.data.shape().clone(), &previous[0].cell.data) } else { dump.data.complete() },
+          grad: dump.grad.and_then(|grad| Some(grad.detach()) ),
         },
         op: dump.op,
-        previous: dump.previous.iter().map(|id| nodes[id].clone() ).collect(),
+        previous,
         trainable: dump.trainable,
       };
       nodes.insert(node.id, RcT::new(node));
@@ -127,6 +129,7 @@ struct NodeDump<T: Real + 'static> {
   op: Option<Op<T>>,
   previous: Vec<usize>,
   trainable: bool,
+  was_shared: bool,
 }
 
 #[derive(Serialize, Deserialize)]
