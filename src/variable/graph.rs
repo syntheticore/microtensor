@@ -9,8 +9,9 @@ use crate::{
   internal::*,
   ops::BaseOps,
   scalar::Real,
+  shape::Shape,
+  tensor::Tensor,
   variable::{ Variable, Node, NodeCell, Op },
-  Tensor,
 };
 
 
@@ -66,12 +67,13 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
     let history_dump = history.iter().map(|node| {
       NodeDump {
         id: node.id,
-        data: if node.trainable || node.op.is_none() { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
+        data: if node.op.is_none() { node.cell.data.detach() } else { Tensor::scalar(T::zero()).broadcast(node.cell.data.shape(), None) },
+        shape: node.cell.data.shape().clone(), // Save original shape for shared tensors
         grad: node.cell.grad.as_ref().and_then(|grad| Some(Tensor::scalar(T::zero()).broadcast(grad.shape(), None)) ),
         op: node.op.clone(),
         previous: node.previous.iter().map(|prev| prev.id ).collect(),
         trainable: node.trainable,
-        was_shared: node.op.is_some() && node.previous.len() > 0 && node.cell.data.shared_with(&node.previous[0].cell.data),
+        was_shared: node.op.is_some() && node.cell.data.shared_with(&node.previous[0].cell.data),
       }
     }).collect();
 
@@ -94,7 +96,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
       let node = Node {
         id: dump.id,
         cell: NodeCell {
-          data: if dump.was_shared { Tensor::from_shared(dump.data.shape().clone(), &previous[0].cell.data) } else { dump.data.complete() },
+          data: if dump.was_shared { Tensor::from_shared(dump.shape, &previous[0].cell.data) } else { dump.data.complete() },
           grad: dump.grad.and_then(|grad| Some(grad.detach()) ),
         },
         op: dump.op,
@@ -125,6 +127,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
 struct NodeDump<T: Real + 'static> {
   id: usize,
   data: Tensor<T>,
+  shape: Shape,
   grad: Option<Tensor<T>>,
   op: Option<Op<T>>,
   previous: Vec<usize>,
