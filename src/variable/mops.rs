@@ -204,7 +204,7 @@ macro_rules! add_operator {
       }
     }
 
-    impl std::ops::$op<&Variable<f32>> for f32 { // T * &tensor
+    impl std::ops::$op<&Variable<f32>> for f32 { // f32 * &tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: &Variable<f32>) -> Variable<f32> {
@@ -212,10 +212,26 @@ macro_rules! add_operator {
       }
     }
 
-    impl std::ops::$op<Variable<f32>> for f32 { // T * tensor
+    impl std::ops::$op<Variable<f32>> for f32 { // f32 * tensor
       type Output = Variable<f32>;
 
       fn $meth(self, rhs: Variable<f32>) -> Variable<f32> {
+        Tensor::scalar(self).tracked() $symbol &rhs
+      }
+    }
+
+    impl std::ops::$op<&Variable<f64>> for f64 { // f64 * &tensor
+      type Output = Variable<f64>;
+
+      fn $meth(self, rhs: &Variable<f64>) -> Variable<f64> {
+        Tensor::scalar(self).tracked() $symbol rhs
+      }
+    }
+
+    impl std::ops::$op<Variable<f64>> for f64 { // f64 * tensor
+      type Output = Variable<f64>;
+
+      fn $meth(self, rhs: Variable<f64>) -> Variable<f64> {
         Tensor::scalar(self).tracked() $symbol &rhs
       }
     }

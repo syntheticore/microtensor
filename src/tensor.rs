@@ -57,6 +57,12 @@ impl<T: Inner> PartialEq for Tensor<T> {
   }
 }
 
+impl<T: Real> From<T> for Tensor<T> {
+  fn from(value: T) -> Self {
+    Self::scalar(value)
+  }
+}
+
 impl<T: Inner> Tensor<T> {
   pub(crate) fn from_shared(shape: Shape, other: &Self) -> Self {
     Self { shape, data: other.data.clone() }

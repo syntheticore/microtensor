@@ -318,6 +318,22 @@ macro_rules! add_operator {
         Tensor::scalar(self) $symbol &tensor
       }
     }
+
+    impl std::ops::$trait<&Tensor<f64>> for f64 { // f64 * &tensor
+      type Output = Tensor<f64>;
+
+      fn $meth(self, tensor: &Tensor<f64>) -> Tensor<f64> {
+        Tensor::scalar(self) $symbol tensor
+      }
+    }
+
+    impl std::ops::$trait<Tensor<f64>> for f64 { // f64 * tensor
+      type Output = Tensor<f64>;
+
+      fn $meth(self, tensor: Tensor<f64>) -> Tensor<f64> {
+        Tensor::scalar(self) $symbol &tensor
+      }
+    }
   };
 }
 

@@ -175,6 +175,12 @@ impl<T: Real> PartialEq for Variable<T> {
   }
 }
 
+impl<T: Real> From<T> for Variable<T> {
+  fn from(value: T) -> Self {
+    Self::scalar(value)
+  }
+}
+
 impl<T: Real> Variable<T> {
   pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool) -> Self {
     Self {
