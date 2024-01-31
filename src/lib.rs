@@ -1,6 +1,5 @@
 //! Automatic differentiation for tensor operations.
-//!
-//! Requires Rust nightly.
+//! Tiny. Few dependencies. CPU only. Requires Rust nightly.
 //!
 //! # Features
 //!
@@ -27,44 +26,34 @@
 //!
 //! Evaluating and minimizing a non-linear function:
 //! ```
-//! use microtensor::{prelude::*, Tensor};
+//! use microtensor::{ ops::*, Tensor, optimize::{ Optimizer, Adam } };
 //!
-//! // Create trainable variables from tensors
-//! let w = Tensor::randn(&[2, 16]).trained();
-//! let b = Tensor::zeros(&[16]).trained();
+//! fn main() {
+//!   // Create trainable variables from tensors
+//!   let w = Tensor::randn(&[2, 8]).trained();
+//!   let b = Tensor::zeros(&[8]).trained();
 //!
-//! for _ in 0..100 {
-//!   // Do some computation
-//!   let x = Tensor::vec(&[1.0, 2.0]).tracked();
-//!   let loss = ((x.mm(&w) + &b).sigmoid() - 0.5).sqr().mean(0);
+//!   // Use a standard optimizer
+//!   let mut optimizer = Optimizer::new(0.001, Adam::default());
 //!
-//!   // Compute gradients
-//!   loss.backward();
+//!   // Basic training loop
+//!   for _ in 0..100 {
 //!
-//!   // Nudge w and b in order to minimize loss
-//!   for mut param in loss.parameters() {
-//!     param -= param.grad().unwrap() * 0.01;
+//!     // Track training data for compute operations to be recorded
+//!     let x = Tensor::vec(&[1.0, 2.0]).tracked();
+//!
+//!     // Compute loss
+//!     let loss = ((x.mm(&w) + &b).silu() - 0.5).sqr().mean(0);
+//!
+//!     // Back-prop, optimize and reset gradients
+//!     optimizer.minimize(&loss, loss.parameters(), true);
 //!   }
-//!
-//!   // Reset gradients
-//!   loss.reset();
 //! }
-//! ```
-//!
-//! Automatic broadcasting:
-//! ```rust
-//! use microtensor::{prelude::*, Tensor};
-//!
-//! let a = Tensor::arrange(&[2, 16], 0., 1.);
-//! let b = Tensor::ones(&[2]);
-//! let c = &a - b.unsqueeze(-1) + 1.;
-//!
-//! assert_eq!(a, c);
 //! ```
 //!
 //! Generic return types:
 //! ```rust
-//! use microtensor::{prelude::*, Tensor};
+//! use microtensor::{ops::*, Tensor};
 //!
 //! let t = Tensor::<f32>::randn(&[16]);
 //! let _a: u8  = t.argmax(0).item();
@@ -83,7 +72,7 @@
 //! - `threading` *(default)* — Thread safety & multi-threaded operation over batch dimensions.
 // //! Generic inner types:
 // //! ```rust
-// //! use microtensor::{prelude::*, Tensor};
+// //! use microtensor::{ops::*, Tensor};
 // //!
 // //! let mask: Tensor<bool> = Tensor::randn(&[2, 16]).gt(&Tensor::scalar(1.0)).any(-1);
 // //!
@@ -91,7 +80,6 @@
 // //!
 // //! ```
 
-#![feature(arc_unwrap_or_clone)]
 #![feature(min_specialization)]
 
 mod internal;

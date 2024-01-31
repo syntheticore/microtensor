@@ -11,9 +11,11 @@ fn main() {
   // Basic training loop
   for _ in 0..100 {
 
-    // Compute loss
+    // Track training data for compute operations to be recorded
     let x = Tensor::vec(&[1.0, 2.0]).tracked();
-    let loss = ((x.mm(&w) + &b).sigmoid() - 0.5).sqr().mean(0);
+
+    // Compute loss
+    let loss = ((x.mm(&w) + &b).silu() - 0.5).sqr().mean(0);
 
     // Back-prop, optimize and reset gradients
     optimizer.minimize(&loss, loss.parameters(), true);

@@ -35,12 +35,12 @@ fn build_model(filename: &str) {
 }
 
 fn load_model(filename: &str) {
-  let graph = Graph::load(filename).unwrap();
+  let mut graph = Graph::load(filename).unwrap();
 
-  // Feed new data using #run.
+  // Feed new data using #run_all.
   // Updating the entire graph in this way is more efficient
   // than calling #forward on each individual output.
-  graph.run(&[
+  graph.run_all(&[
     &Tensor::vec(&[5.0, 6.0]),
     &Tensor::randn(&[16]),
   ]);
@@ -50,7 +50,6 @@ fn load_model(filename: &str) {
   println!("z is now {}", z.item());
 
   // ..or train the model further
-  let z = &graph.outputs[1];
   z.backward();
   for mut param in z.parameters() {
     param -= param.grad().unwrap() * 0.01
