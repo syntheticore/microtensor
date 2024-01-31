@@ -129,7 +129,7 @@ struct NodeDump<T: Real + 'static> {
   data: Tensor<T>,
   shape: Shape,
   grad: Option<Tensor<T>>,
-  op: Option<Op<T>>,
+  op: Option<Op>,
   previous: Vec<usize>,
   trainable: bool,
   was_shared: bool,

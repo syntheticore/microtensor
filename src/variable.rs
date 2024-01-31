@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::fmt::Debug;
 
-use serde::{Serialize, Deserialize, de::DeserializeOwned};
+use serde::{Serialize, Deserialize};
 
 mod mops;
 mod graph;
@@ -25,40 +25,36 @@ pub fn make_id() -> usize {
 
 /// Unary computational operation that can also compute its derivative.
 
-pub trait UnaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
+pub trait UnaryOp<T: Real>: Debug + Send + Sync {
   fn run(&self, lhs: &Tensor<T>) -> Tensor<T>;
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T>;
+  fn as_enum(self) -> mops::UnaryMops;
 }
 
 
 /// Binary computational operation that can also compute its derivative.
 
-pub trait BinaryOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
+pub trait BinaryOp<T: Real>: Debug + Send + Sync {
   fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T>;
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>);
+  fn as_enum(self) -> mops::BinaryMops;
 }
 
 
 /// Computational operation that can also compute its derivative.
 
-pub trait MultiOp<T: Real>: Debug + Send + Sync + serde_traitobject::Serialize + serde_traitobject::Deserialize {
+pub trait MultiOp<T: Real>: Debug + Send + Sync {
   fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T>;
   fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>>;
+  fn as_enum(self) -> mops::MultiMops;
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
-enum Op<T: Real> {
-  Binary(serde_traitobject::Box<dyn BinaryOp<T>>),
-  Unary(serde_traitobject::Box<dyn UnaryOp<T>>),
-  Multi(serde_traitobject::Box<dyn MultiOp<T>>),
-}
-
-impl<T: Real + Serialize + DeserializeOwned> Clone for Op<T> {
-  fn clone(&self) -> Self {
-    let op: Vec<u8> = postcard::to_allocvec(&self).unwrap();
-    postcard::from_bytes(&op).unwrap()
-  }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum Op {
+  Binary(mops::BinaryMops),
+  Unary(mops::UnaryMops),
+  Multi(mops::MultiMops),
 }
 
 
@@ -69,7 +65,7 @@ impl<T: Real + Serialize + DeserializeOwned> Clone for Op<T> {
 struct Node<T: Real> {
   pub id: usize,
   cell: NodeCell<T>,
-  op: Option<Op<T>>,
+  op: Option<Op>,
   previous: Vec<RcT<Self>>,
   trainable: bool,
 }
@@ -101,14 +97,14 @@ impl<T: Real> Node<T> {
     if let Some(op) = &self.op {
       let lhs = &self.previous[0].cell.data;
       let value = match op {
-        Op::Unary(op) => op.run(lhs),
+        Op::Unary(op) => op.as_unary_op().run(lhs),
         Op::Binary(op) => {
           let rhs = &self.previous[1].cell.data;
-          op.run(lhs, rhs)
+          op.as_binary_op().run(lhs, rhs)
         },
         Op::Multi(op) => {
           let tensors: Vec<&Tensor<T>> = self.previous.iter().map(|prev| &prev.cell.data ).collect();
-          op.run(&tensors)
+          op.as_multi_op().run(&tensors)
         },
       };
       if !self.cell.data.shared_with(&value) {
@@ -123,15 +119,15 @@ impl<T: Real> Node<T> {
     if let (Some(op), Some(grad)) = (&self.op, &self.cell.grad) {
       let lhs = &self.previous[0];
       let changes = match op {
-        Op::Unary(op) => vec![op.derive(&lhs.cell.data, grad)],
+        Op::Unary(op) => vec![op.as_unary_op().derive(&lhs.cell.data, grad)],
         Op::Binary(op) => {
           let rhs = &self.previous[1];
-          let changes = op.derive(&lhs.cell.data, &rhs.cell.data, grad);
+          let changes = op.as_binary_op().derive(&lhs.cell.data, &rhs.cell.data, grad);
           vec![changes.0, changes.1]
         },
         Op::Multi(op) => {
           let tensors: Vec<&Tensor<T>> = self.previous.iter().map(|prev| &prev.cell.data ).collect();
-          op.derive(&tensors, grad)
+          op.as_multi_op().derive(&tensors, grad)
         },
       };
       for (change, prev) in changes.iter().zip(self.previous.iter()) {
@@ -179,18 +175,6 @@ impl<T: Real> PartialEq for Variable<T> {
   }
 }
 
-// impl<T: Real> From<Tensor<T>> for Variable<T> {
-//   fn from(tensor: Tensor<T>) -> Self {
-//     Self::from_tensor(tensor, false)
-//   }
-// }
-
-// impl<T: Real> From<&Tensor<T>> for Variable<T> {
-//   fn from(tensor: &Tensor<T>) -> Self {
-//     Self::from_tensor(tensor.clone(), false)
-//   }
-// }
-
 impl<T: Real> Variable<T> {
   pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool) -> Self {
     Self {
@@ -211,7 +195,7 @@ impl<T: Real> Variable<T> {
     }
   }
 
-  fn operation(op: Op<T>, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
+  fn operation(op: Op, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
     Self {
       node: RcT::new(Node {
         id: make_id(),
@@ -241,7 +225,7 @@ impl<T: Real> Variable<T> {
   pub fn unary_op(&self, op: impl UnaryOp<T> + 'static) -> Self {
     let data = op.run(&self.node.cell.data);
     Self::operation(
-      Op::Unary(serde_traitobject::Box::new(op)),
+      Op::Unary(op.as_enum()),
       data,
       self.grad().is_some(),
       vec![self.node.clone()],
@@ -251,7 +235,7 @@ impl<T: Real> Variable<T> {
   pub fn binary_op(&self, op: impl BinaryOp<T> + 'static, rhs: &Self) -> Self {
     let data = op.run(&self.node.cell.data, &rhs.node.cell.data);
     Self::operation(
-      Op::Binary(serde_traitobject::Box::new(op)),
+      Op::Binary(op.as_enum()),
       data,
       self.grad().is_some() || rhs.grad().is_some(),
       vec![self.node.clone(), rhs.node.clone()],
@@ -262,7 +246,7 @@ impl<T: Real> Variable<T> {
     let tensors: Vec<&Tensor<T>> = inputs.iter().map(|input| &input.node.cell.data ).collect();
     let data = op.run(&tensors);
     Self::operation(
-      Op::Multi(serde_traitobject::Box::new(op)),
+      Op::Multi(op.as_enum()),
       data,
       inputs.iter().any(|input| input.grad().is_some() ),
       inputs.iter().map(|input| input.node.clone() ).collect(),

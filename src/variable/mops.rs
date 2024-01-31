@@ -6,7 +6,7 @@ use crate::{
   internal::*,
   shape::Shape,
   tensor::Tensor,
-  variable::{ Variable, BinaryOp, UnaryOp },
+  variable::{ Variable, UnaryOp, BinaryOp, MultiOp },
   scalar::Real,
   ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops },
 };
@@ -242,6 +242,8 @@ impl<T: Real> BinaryOp<T> for Add {
     grad.clone(),
     grad.clone(),
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Add(self) }
 }
 
 
@@ -258,6 +260,8 @@ impl<T: Real> BinaryOp<T> for Sub {
     grad.clone(),
     -grad
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Sub(self) }
 }
 
 
@@ -274,6 +278,8 @@ impl<T: Real> BinaryOp<T> for Mul {
     grad * rhs,
     grad * lhs,
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Mul(self) }
 }
 
 
@@ -290,6 +296,8 @@ impl<T: Real> BinaryOp<T> for Div {
     grad / rhs,
     -grad * lhs / rhs / rhs
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Div(self) }
 }
 
 
@@ -306,6 +314,8 @@ impl<T: Real> BinaryOp<T> for Rem {
     grad.clone(),
     -grad
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Rem(self) }
 }
 
 
@@ -347,6 +357,8 @@ impl<T: Real> BinaryOp<T> for MatMul {
 
     (grad_l, grad_r)
   }
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::MatMul(self) }
 }
 
 
@@ -371,6 +383,8 @@ impl<T: Real> UnaryOp<T> for Range {
     }
     out
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Range(self) }
 }
 
 
@@ -400,6 +414,8 @@ impl<T: Real> UnaryOp<T> for Broadcast {
     }
     grad
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Broadcast(self) }
 }
 
 
@@ -416,6 +432,8 @@ impl<T: Real> UnaryOp<T> for Reshape {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad.reshape(&lhs.shape().dims)
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Reshape(self) }
 }
 
 
@@ -433,6 +451,8 @@ impl<T: Real> UnaryOp<T> for Transpose {
   fn derive(&self, _lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad.transpose(self.dim1, self.dim2)
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Transpose(self) }
 }
 
 
@@ -459,6 +479,8 @@ impl<T: Real> BinaryOp<T> for Concat {
 
     (grad.range(&ranges_l), grad.range(&ranges_r))
   }
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Concat(self) }
 }
 
 
@@ -478,6 +500,8 @@ impl<T: Real> BinaryOp<T> for AssignMasked {
     let rgrad = grad.complete().layout(|_| self.mask.clone() );
     (lgrad, rgrad)
   }
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::AssignMasked(self) }
 }
 
 
@@ -501,6 +525,8 @@ impl<T: Real> UnaryOp<T> for Layout {
     }
     out
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Layout(self) }
 }
 
 
@@ -517,6 +543,8 @@ impl<T: Real> BinaryOp<T> for Pow {
     grad * rhs * lhs.pow(&(rhs - T::one())),
     grad * lhs.pow(rhs) * lhs.log(),
   )}
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::Pow(self) }
 }
 
 
@@ -531,6 +559,8 @@ impl<T: Real> UnaryOp<T> for Sin {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * lhs.cos()
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Sin(self) }
 }
 
 
@@ -545,6 +575,8 @@ impl<T: Real> UnaryOp<T> for Cos {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * -lhs.sin()
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Cos(self) }
 }
 
 
@@ -559,6 +591,8 @@ impl<T: Real> UnaryOp<T> for Log {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad / lhs
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Log(self) }
 }
 
 
@@ -575,6 +609,8 @@ impl<T: Real> UnaryOp<T> for Sum {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     uncollapse(self.dim, lhs, grad)
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Sum(self) }
 }
 
 fn uncollapse<T: Real>(dim: isize, tensor: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
@@ -596,6 +632,8 @@ impl<T: Real> UnaryOp<T> for Abs {
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
     grad * lhs.signum()
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Abs(self) }
 }
 
 
@@ -614,6 +652,8 @@ impl<T: Real> UnaryOp<T> for Min {
     let removed_flat_size = lhs.shape()[self.dim..-1].iter().product();
     uncollapse(self.dim, lhs, grad) * indices.one_hot(removed_flat_size).reshape(&lhs.shape().dims)
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Min(self) }
 }
 
 
@@ -632,6 +672,41 @@ impl<T: Real> UnaryOp<T> for Max {
     let removed_flat_size = lhs.shape()[self.dim..-1].iter().product();
     uncollapse(self.dim, lhs, grad) * indices.one_hot(removed_flat_size).reshape(&lhs.shape().dims)
   }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Max(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReLU;
+
+impl<T: Real> UnaryOp<T> for ReLU {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.relu()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad * lhs.gt(&Tensor::scalar(T::zero())).numeric()
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::ReLU(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sigmoid;
+
+impl<T: Real> UnaryOp<T> for Sigmoid {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.sigmoid()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let result = lhs.sigmoid();
+    grad * (&result * (Tensor::scalar(T::one()) - &result))
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Sigmoid(self) }
 }
 
 
@@ -654,29 +729,80 @@ impl<T: Real> UnaryOp<T> for Max {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReLU;
+pub enum UnaryMops {
+  Range(Range),
+  Broadcast(Broadcast),
+  Reshape(Reshape),
+  Transpose(Transpose),
+  Layout(Layout),
+  Sin(Sin),
+  Cos(Cos),
+  Log(Log),
+  Sum(Sum),
+  Abs(Abs),
+  Min(Min),
+  Max(Max),
+  ReLU(ReLU),
+  Sigmoid(Sigmoid),
+}
 
-impl<T: Real> UnaryOp<T> for ReLU {
-  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.relu()
-  }
-
-  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    grad * lhs.gt(&Tensor::scalar(T::zero())).numeric()
+impl UnaryMops {
+  pub fn as_unary_op<T: Real>(&self) -> &dyn UnaryOp<T> {
+    match self {
+      Self::Range(op) => op,
+      Self::Broadcast(op) => op,
+      Self::Reshape(op) => op,
+      Self::Transpose(op) => op,
+      Self::Layout(op) => op,
+      Self::Sin(op) => op,
+      Self::Cos(op) => op,
+      Self::Log(op) => op,
+      Self::Sum(op) => op,
+      Self::Abs(op) => op,
+      Self::Min(op) => op,
+      Self::Max(op) => op,
+      Self::ReLU(op) => op,
+      Self::Sigmoid(op) => op,
+    }
   }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BinaryMops {
+  Add(Add),
+  Sub(Sub),
+  Mul(Mul),
+  Div(Div),
+  Rem(Rem),
+  MatMul(MatMul),
+  Concat(Concat),
+  AssignMasked(AssignMasked),
+  Pow(Pow),
+}
+
+impl BinaryMops {
+  pub fn as_binary_op<T: Real>(&self) -> &dyn BinaryOp<T> {
+    match self {
+      Self::Add(op) => op,
+      Self::Sub(op) => op,
+      Self::Mul(op) => op,
+      Self::Div(op) => op,
+      Self::Rem(op) => op,
+      Self::MatMul(op) => op,
+      Self::Concat(op) => op,
+      Self::AssignMasked(op) => op,
+      Self::Pow(op) => op,
+    }
+  }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Sigmoid;
+pub enum MultiMops {}
 
-impl<T: Real> UnaryOp<T> for Sigmoid {
-  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
-    lhs.sigmoid()
-  }
-
-  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let result = lhs.sigmoid();
-    grad * (&result * (Tensor::scalar(T::one()) - &result))
+impl MultiMops {
+  pub fn as_multi_op<T: Real>(&self) -> &dyn MultiOp<T> {
+    match self {
+      _ => todo!(),
+    }
   }
 }
