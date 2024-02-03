@@ -184,7 +184,7 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.reshape(&[0]).squeeze_all()
   }
 
-  fn windows(&self, shape: &Shape, step: [usize; 2]) -> Self {
+  fn windows(&self, shape: [usize; 2], step: [usize; 2]) -> Self {
     self.layout(|shap| shap.windows(shape, step) )
   }
 
@@ -216,7 +216,7 @@ where
   }
 
   fn max_pool(&self, kernel: [usize; 2]) -> Self {
-    self.windows(&Shape::new(&kernel), kernel).max(-2)
+    self.windows(kernel, kernel).max(-2)
   }
 
   fn pad(&self, padding: &[usize]) -> Self {
@@ -231,6 +231,20 @@ where
     let ranges: Vec<_> = padding.iter().map(|&p| p as isize .. -1 - p as isize ).collect();
     let mask = out.range_back(&ranges);
     out.assign_masked(self, |_| mask.shape().clone() ) // Ok, because we know 'out' had standard layout before building mask
+  }
+
+  fn upscale(&self, kernel: [usize; 2]) -> Self {
+    let mut dims = self.shape().dims.clone();
+    let len = dims.len();
+    dims[len - 2] *= kernel[0];
+    dims[len - 1] *= kernel[1];
+    let out = Self::zeros(&dims);
+
+    let mask = out.shape().windows(kernel, kernel);
+    out.assign_masked(
+      &self.unsqueeze_n(2, -1).broadcast(&mask, None),
+      |_| mask.clone(),
+    )
   }
 }
 
@@ -302,39 +316,6 @@ where
     self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0).squeeze_only(0)
   }
 
-  // fn convolve(&self, kernels: &Self) -> Self {
-  //   // self: (batch, width, height, channels)
-  //   // kernels: (k, width, height, channels)
-  //   let kernel_width = kernels.dim(-3);
-  //   let kernel_height = kernels.dim(-2);
-  //   let target_width = self.dim(-3) - (kernel_width - 1);
-  //   let target_height = self.dim(-2) - (kernel_height - 1);
-  //   // let channels = self.dim(-1);
-  //   // convolved: (batch, k, width, height)
-  //   let dims = &self.shape().dims;
-  //   let mut dims = dims[0..dims.len() - 3].to_vec();
-  //   dims.append(&mut vec![kernels.dim(0), target_width, target_height]);
-  //   let mut convolved = Self::zeros(&dims);
-  //   // let mut assignments = vec![];
-  //   for x in 0..target_width as isize {
-  //     for y in 0..target_height as isize {
-  //       let slice = self.range_back(&[
-  //         x .. x + kernel_width as isize,
-  //         y .. y + kernel_height as isize,
-  //         0 .. -1,
-  //       ]);
-  //       let dot = (&slice.unsqueeze(-4) * kernels).sum(-3); // (batch, w, h, c) -> (batch, k, w, h, c) -> (batch, k)
-  //       // convolved.range_back(&[x..x + 1, y..y + 1]).assign(&dot);
-  //       let mask = convolved.at_back(&[x, y]);
-  //       convolved = convolved.assign_masked(&dot, mask.shape());
-  //       // assignments.push((mask.shape().clone(), dot));
-  //     }
-  //   }
-  //   // let convolved = Self::compose(&dims, &assignments);
-  //   // (batch, k, width, height) -> (batch, width, height, k)
-  //   convolved.unsqueeze(-1).transpose(-4, -1).squeeze(&[-4])
-  // }
-
   fn convolve2d(&self, kernels: &Self, step: [usize; 2], bias: Option<&Self>, padding: bool) -> Self {
     let kernel_width = kernels.dim(-2);
     let kernel_height = kernels.dim(-1);
@@ -349,7 +330,7 @@ where
     let out_height = (padded.dim(-1) - kernel_height) + 1;
 
     let windows = padded
-      .windows(kernels.shape(), step)
+      .windows(kernels.shape()[-2..-1].try_into().unwrap(), step)
       .reshape_keep(&[-1, -1, 0, (kernel_width * kernel_height) as isize])
       .transpose(-2, -1);
 

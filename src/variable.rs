@@ -331,7 +331,7 @@ impl<T: Real> Variable<T> {
     let eps = T::from(0.01).unwrap();
     let two = T::from(2.0).unwrap();
     // Generate random input
-    let input = Tensor::randn(shape);
+    let input = Tensor::rand(shape);
     let var = input.trained();
     // Compute gradient using auto diff
     let output = generator(&var).sum(0);
@@ -352,15 +352,22 @@ impl<T: Real> Variable<T> {
     (grad - num_grad).abs().mean(0).item()
   }
 
-  pub fn statistics(&self) -> (usize, usize, usize, usize, usize) {
+  pub fn print(&self) {
     let history = self.history();
     let num_nodes = history.len();
     let num_ops = history.iter().filter(|node| node.op.is_some() ).collect::<Vec<_>>().len();
     let num_grads = history.iter().filter(|node| node.cell.grad.is_some() ).collect::<Vec<_>>().len();
     let params = self.parameters();
     let num_variables = params.len();
-    let num_trainable_params = params.iter().map(|param| param.shape().size() ).sum();
-    (num_nodes, num_ops, num_grads, num_variables, num_trainable_params)
+    let num_trainable_params: usize = params.iter().map(|param| param.shape().size() ).sum();
+    println!("# Nodes: {num_nodes}");
+    println!("# Operations: {num_ops}");
+    println!("# Gradients: {num_grads}");
+    println!("# Trained Tensors: {num_variables}");
+    println!("# Total Parameters: {num_trainable_params}");
+    for param in self.parameters() {
+      println!("{} -> {}", param.shape(), param.shape().size());
+    }
   }
 
   pub fn tracked(&self) -> Self { panic!("Tensor is already being tracked") }
