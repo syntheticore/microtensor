@@ -238,13 +238,15 @@ where
     let len = dims.len();
     dims[len - 2] *= kernel[0];
     dims[len - 1] *= kernel[1];
-    let out = Self::zeros(&dims);
+    let out_shape = Shape::new(&dims);
 
-    let mask = out.shape().windows(kernel, kernel);
-    out.assign_masked(
-      &self.unsqueeze_n(2, -1).broadcast(&mask, None),
-      |_| mask.clone(),
-    )
+    let mask = out_shape.windows(kernel, kernel);
+    Self::scalar(I::zero())
+      .broadcast(&out_shape, None)
+      .assign_masked(
+        &self.unsqueeze_n(2, -1).broadcast(&mask, None),
+        |_| mask.clone(),
+      )
   }
 }
 

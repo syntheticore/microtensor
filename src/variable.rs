@@ -401,7 +401,9 @@ impl<T: Real> std::ops::DivAssign<Tensor<T>> for Variable<T> {
 impl<T: Real> std::fmt::Display for Variable<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     let title = if self.node.trainable { "Trainable" } else {
-      if self.node.cell.grad.is_some() { "Computed" } else { "Tracked" }
+      if self.node.cell.grad.is_some() { "Differentiated" } else {
+        if self.node.op.is_some() { "Computed" } else { "Tracked" }
+      }
     };
     write!(f, "{title} {}", self.tensor())
   }
