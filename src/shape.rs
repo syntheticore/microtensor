@@ -67,7 +67,7 @@ impl Shape {
 
   pub fn size_raw(&self) -> usize {
     self.dims.iter().zip(&self.strides)
-      .map(|(d, s)| if *s == 0 { 1 } else { *d } )
+      .map(|(d, s)| if *s == 0 { 1 } else { *d } ) //XXX handles #broadcast, but not #step
       .product()
   }
 
@@ -166,7 +166,19 @@ impl Shape {
     Self { dims, strides: self.strides.clone(), offset: (self.offset as isize + offset) as usize }
   }
 
+  pub fn range_back(&self, ranges: &[Range<isize>]) -> Self {
+    let full_slices = self.rank() - ranges.len();
+    let mut vec = vec![0..-1; full_slices];
+    vec.append(&mut ranges.to_vec());
+    self.range(&vec)
+  }
+
   pub fn step(&self, steps: &[isize]) -> Self {
+    let dims: Vec<_> = self.dims.iter()
+      .zip(steps.iter())
+      .map(|(&dim, &step)| dim.div_ceil(step.abs() as usize) )
+      .collect();
+
     let strides: Vec<_> = self.strides.iter()
       .zip(steps.iter())
       .map(|(&stride, &step)| stride * step )
@@ -179,7 +191,7 @@ impl Shape {
       } else { 0 })
       .sum::<isize>();
 
-    Self::offset(&self.dims, &strides, (offset + self.offset as isize) as usize)
+    Self::offset(&dims, &strides, (offset + self.offset as isize) as usize)
   }
 
   pub fn squeeze(&self, squeezed: &[isize]) -> Self {
@@ -277,7 +289,8 @@ impl Shape {
     shape
   }
 
-  pub fn windows(&self, shape: &Shape, step: [usize; 2]) -> Self {
+  pub fn windows(&self, shape: [usize; 2], step: [usize; 2]) -> Self {
+    let shape = Self::new(&shape);
     debug_assert!(self.contiguous());
     debug_assert!(self[-2] >= shape[-2] && self[-2] >= shape[-2], "{self} Tensor cannot fit {shape} window");
 
@@ -482,6 +495,11 @@ mod tests {
     assert_eq!(shape.offset, 2);
     assert_eq!(shape.step(&[1, 1,1]).offset, 2);
     assert_eq!(shape.step(&[1,-1,1]).offset, 0);
+
+    let a = Shape::new(&[3,3,2]).step(&[1,2,1]);
+    assert_eq!(a.dims, vec![3,2,2]);
+    assert_eq!(a.strides, vec![6,4,1]);
+    assert_eq!(a.offset, 0);
   }
 
   #[test]

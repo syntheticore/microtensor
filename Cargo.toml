@@ -13,13 +13,13 @@ readme = "README.md"
 
 [dependencies]
 rand = "0.7.3"
-num-traits = "0.2.15"
-itertools = "0.10.5"
-serde = { version = "1.0.145", features = ["derive", "rc"] }
-postcard = { version = "1.0.2", features = ["alloc"] }
+num-traits = "0.2.17"
+itertools = "0.12.1"
+serde = { version = "1.0.196", features = ["derive", "rc"] }
+postcard = { version = "1.0.8", features = ["alloc"] }
 
 parking_lot = { version = "0.12.1", features = ["serde"], optional = true }
-matrixmultiply = { version = "0.3.2", features = ["threading"], optional = true  }
+matrixmultiply = { version = "0.3.8", features = ["std", "threading"], optional = true  }
 
 [features]
 default = [
