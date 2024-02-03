@@ -215,6 +215,14 @@ where
     Self::fill(shape, I::zero())
   }
 
+  fn masked(dims: &[usize], source: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
+    let shape = Shape::new(&dims);
+    let mask = cb(&shape);
+    Self::scalar(I::zero())
+      .broadcast(&shape, None)
+      .assign_masked(&source.broadcast(&mask, None), |_| mask.clone() )
+  }
+
   fn max_pool(&self, kernel: [usize; 2]) -> Self {
     self.windows(kernel, kernel).max(-2)
   }
@@ -227,10 +235,8 @@ where
       let p = padding[i];
       dims[dimlen - (padlen - i)] += p * 2;
     }
-    let out = Self::zeros(&dims);
     let ranges: Vec<_> = padding.iter().map(|&p| p as isize .. -1 - p as isize ).collect();
-    let mask = out.range_back(&ranges);
-    out.assign_masked(self, |_| mask.shape().clone() ) // Ok, because we know 'out' had standard layout before building mask
+    Self::masked(&dims, &self, |mask| mask.range_back(&ranges) )
   }
 
   fn upscale(&self, kernel: [usize; 2]) -> Self {
@@ -238,15 +244,11 @@ where
     let len = dims.len();
     dims[len - 2] *= kernel[0];
     dims[len - 1] *= kernel[1];
-    let out_shape = Shape::new(&dims);
-
-    let mask = out_shape.windows(kernel, kernel);
-    Self::scalar(I::zero())
-      .broadcast(&out_shape, None)
-      .assign_masked(
-        &self.unsqueeze_n(2, -1).broadcast(&mask, None),
-        |_| mask.clone(),
-      )
+    Self::masked(
+      &dims,
+      &self.unsqueeze_n(2, -1),
+      |mask| mask.windows(kernel, kernel)
+    )
   }
 }
 
