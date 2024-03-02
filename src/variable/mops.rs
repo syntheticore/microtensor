@@ -104,7 +104,7 @@ impl<T: Real> SignedOps<T> for Variable<T> {
 
 impl<T: Real> RealOps<T> for Variable<T> {
   fn pow(&self, rhs: &Self) -> Variable<T> {
-    let (lhs, rhs) = if self.shape().dims != rhs.shape().dims {
+    let (lhs, rhs) = if self.shape().dims != rhs.shape().dims { //XXX remove, because already checked in broadcast itself
       (self.broadcast(&rhs.shape(), None), rhs.broadcast(&self.shape(), None))
     } else {
       (self.clone(), rhs.clone())

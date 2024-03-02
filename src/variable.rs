@@ -8,6 +8,7 @@ mod mops;
 mod graph;
 
 pub use graph::Graph;
+pub use graph::GraphModel;
 
 use crate::{
   internal::*,
@@ -61,7 +62,7 @@ enum Op {
 /// Node in a computation graph, containing a [Variable]'s data and gradient,
 /// as well as the operation used to create it.
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Node<T: Real> {
   pub id: usize,
   cell: NodeCell<T>,
