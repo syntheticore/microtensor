@@ -212,11 +212,10 @@ impl<T: Real> Variable<T> {
       let mut traintape = borrow_mut(traintape_rc);
       traintape.counter += 1;
       if traintape.counter <= traintape.tape.len() {
-        let mut clone = (*traintape.tape[traintape.counter - 1]).clone();
-        clone.id = make_id();
+        let clone = (*traintape.tape[traintape.counter - 1]).clone();
         RcT::new(clone)
       } else {
-        let node = RcT::new(Node::new(tensor, trainable, Some(traintape_rc.clone())));
+        let node = RcT::new(Node::new(tensor, true, Some(traintape_rc.clone())));
         traintape.tape.push(node.clone());
         node
       }

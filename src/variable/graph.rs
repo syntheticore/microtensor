@@ -15,36 +15,53 @@ use crate::{
 };
 
 
+pub trait Tracer<T: Real>: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static{ }
+impl<T: Real, F> Tracer<T> for F where F: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static { }
+
+impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "<Tracer>")
+  }
+}
+
+
+#[derive(Debug)]
 pub struct GraphModel<T: Real + 'static> {
-  pub graph: Option<Graph<T>>,
-  model: Box<dyn Fn(&[Variable<T>]) -> Vec<Variable<T>>>,
+  pub graph: Graph<T>,
+  runner: Box<dyn Tracer<T>>,
   traintape: RcCell<Traintape<T>>,
 }
 
 impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
-  pub fn new(model: impl Fn(&[Variable<T>]) -> Vec<Variable<T>> + 'static) -> Self {
+  pub fn new(runner: impl Tracer<T>) -> Self {
     Self {
-      graph: None,
-      model: Box::new(model),
+      graph: Graph { inputs: vec![], outputs: vec![] },
+      runner: Box::new(runner),
       traintape: make_rc_cell(Traintape { tape: vec![], counter: 0 }),
     }
   }
 
   pub fn run(&mut self, output: usize, inputs: &[&Tensor<T>]) -> &Variable<T> {
-    borrow_mut(&self.traintape).counter = 0;
-    if self.graph.is_none() || self.graph.as_ref().unwrap().inputs.iter().zip(inputs).any(|(input, data)| input.dim(0) != data.dim(0) ) {
-      // First run init
-      self.graph = Some(self.build_graph(inputs));
+    let retrace =
+      self.graph.inputs.len() != inputs.len() ||
+      self.graph.inputs
+        .iter().zip(inputs)
+        .any(|(input, data)| input.dim(0) != data.dim(0) )
+    ;
+    // Retrace when batch dimension have changed or on first run
+    if retrace {
+      self.graph = self.trace(inputs);
     } else {
-      // Update original graph
-      self.graph.as_mut().unwrap().run(output, &inputs);
+      // Update existing graph
+      self.graph.run(output, &inputs);
     }
-    &self.graph.as_ref().unwrap().outputs[output]
+    &self.graph.outputs[output]
   }
 
-  fn build_graph(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
+  fn trace(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
+    borrow_mut(&self.traintape).counter = 0;
     let inputs: Vec<_> = inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect();
-    let outputs = (self.model)(&inputs);
+    let outputs = (self.runner)(&inputs);
     Graph::new(&inputs, &outputs)
   }
 }

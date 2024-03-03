@@ -31,7 +31,7 @@ impl<R: Real, S: Strategy<R>> Optimizer<R, S> {
 
   pub fn minimize(&mut self, loss: &Variable<R>, params: Vec<Variable<R>>, reset: bool) {
     // Compute gradients
-    loss.backward();
+    if reset { loss.backward() }
 
     // Optimize individual parameters
     for mut param in params {
