@@ -63,18 +63,25 @@ enum Op {
 /// as well as the operation used to create it.
 
 #[derive(Debug, Clone)]
-struct Node<T: Real> {
+pub(crate) struct Node<T: Real> {
   pub id: usize,
   cell: NodeCell<T>,
   op: Option<Op>,
   previous: Vec<RcT<Self>>,
   trainable: bool,
+  pub traintape: Option<RcCell<Traintape<T>>>,
 }
 
 #[derive(Debug, Clone)]
 struct NodeCell<T: Real> {
   data: Tensor<T>,
   grad: Option<Tensor<T>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Traintape<T: Real> {
+  tape: Vec<RcT<Node<T>>>,
+  counter: usize,
 }
 
 impl<T: Real> PartialEq for Node<T> {
@@ -84,6 +91,23 @@ impl<T: Real> PartialEq for Node<T> {
 }
 
 impl<T: Real> Node<T> {
+  fn new(tensor: Tensor<T>, trainable: bool, traintape: Option<RcCell<Traintape<T>>>) -> Node<T> {
+    Node {
+      id: make_id(),
+      cell: NodeCell {
+        grad: if trainable {
+          Some(Tensor::zeros(&tensor.shape().dims))
+        } else {
+          None
+        },
+        data: tensor,
+      },
+      op: None,
+      previous: vec![],
+      trainable,
+      traintape,
+    }
+  }
   fn grad(&self) -> Option<&Tensor<T>> {
     self.cell.grad.as_ref()
   }
@@ -153,7 +177,7 @@ impl<T: Real> Node<T> {
 
 #[derive(Debug, Clone)]
 pub struct Variable<T: Real> {
-  node: RcT<Node<T>>,
+  pub(crate) node: RcT<Node<T>>,
 }
 
 //XXX disallow clone for trained vars
@@ -183,26 +207,29 @@ impl<T: Real> From<T> for Variable<T> {
 }
 
 impl<T: Real> Variable<T> {
-  pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool) -> Self {
-    Self {
-      node: RcT::new(Node {
-        id: make_id(),
-        cell: NodeCell {
-          grad: if trainable {
-            Some(Tensor::zeros(&tensor.shape().dims))
-          } else {
-            None
-          },
-          data: tensor,
-        },
-        op: None,
-        previous: vec![],
-        trainable,
-      }),
-    }
+  pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool, traintape: Option<RcCell<Traintape<T>>>) -> Self {
+    let node = if trainable && let Some(ref traintape_rc) = traintape {
+      let mut traintape = borrow_mut(traintape_rc);
+      traintape.counter += 1;
+      if traintape.counter <= traintape.tape.len() {
+        let mut clone = (*traintape.tape[traintape.counter - 1]).clone();
+        clone.id = make_id();
+        RcT::new(clone)
+      } else {
+        let node = RcT::new(Node::new(tensor, trainable, Some(traintape_rc.clone())));
+        traintape.tape.push(node.clone());
+        node
+      }
+    } else {
+      RcT::new(Node::new(tensor, trainable, traintape))
+    };
+    Self { node }
   }
 
   fn operation(op: Op, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
+    let traintape = previous.iter()
+      .find(|prev| prev.traintape.is_some() )
+      .and_then(|node| node.traintape.clone() );
     Self {
       node: RcT::new(Node {
         id: make_id(),
@@ -213,6 +240,7 @@ impl<T: Real> Variable<T> {
         op: Some(op),
         previous,
         trainable: false,
+        traintape,
       }),
     }
   }

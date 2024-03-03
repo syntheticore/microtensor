@@ -80,6 +80,7 @@
 // //!
 // //! ```
 
+#![feature(let_chains)]
 #![feature(min_specialization)]
 
 mod internal;

@@ -1,13 +1,6 @@
-#[cfg(feature = "threading")]
-use {
-  std::sync::Arc,
-  parking_lot::{ RwLock, RwLockReadGuard, RwLockWriteGuard },
-};
-
 #[cfg(not(feature = "threading"))]
 use std::{
   rc::Rc,
-  cell::{ Ref, RefMut, RefCell },
 };
 
 use std::fmt::Debug;
@@ -22,7 +15,7 @@ mod lops;
 use crate::{
   internal::*,
   shape::{ Shape, DimensionIterator },
-  variable::Variable,
+  variable::{ Variable, Traintape },
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
   ops::{ BaseOps, NumericOps, BaseHops, NumericHops, RealHops },
 };
@@ -69,13 +62,7 @@ impl<T: Inner> Tensor<T> {
   }
 
   pub(crate) fn from_shape_raw(shape: Shape, data: Vec<T>) -> Self {
-    #[cfg(not(feature = "threading"))]
-    let this = Self { shape, data: Rc::new(RefCell::new(data)) };
-
-    #[cfg(feature = "threading")]
-    let this = Self { shape, data: Arc::new(RwLock::new(data)) };
-
-    this
+    Self { shape, data: make_rc_cell(data) }
   }
 
   pub fn from_shape(shape: Shape, data: Vec<T>) -> Self {
@@ -124,24 +111,12 @@ impl<T: Inner> Tensor<T> {
   //   Self::new(&dims, data)
   // }
 
-  #[cfg(not(feature = "threading"))]
-  pub fn raw(&self) -> Ref<Vec<T>> {
-    self.data.borrow()
+  pub fn raw(&self) -> RefT<Vec<T>> {
+    borrow(&self.data)
   }
 
-  #[cfg(feature = "threading")]
-  pub fn raw(&self) -> RwLockReadGuard<Vec<T>> {
-    self.data.read()
-  }
-
-  #[cfg(not(feature = "threading"))]
-  pub fn raw_mut(&self) -> RefMut<Vec<T>> {
-    self.data.borrow_mut()
-  }
-
-  #[cfg(feature = "threading")]
-  pub fn raw_mut(&self) -> RwLockWriteGuard<Vec<T>> {
-    self.data.write()
+  pub fn raw_mut(&self) -> RefMutT<Vec<T>> {
+    borrow_mut(&self.data)
   }
 
   #[cfg(not(feature = "threading"))]
@@ -597,11 +572,19 @@ impl<T: Real> Tensor<T> {
   }
 
   pub fn trained(&self) -> Variable<T> {
-    Variable::from_tensor(self.detach(), true)
+    Variable::from_tensor(self.detach(), true, None)
+  }
+
+  pub fn retrained(&self, input: &Variable<T>) -> Variable<T> {
+    Variable::from_tensor(self.detach(), true, input.node.traintape.clone())
   }
 
   pub fn tracked(&self) -> Variable<T> {
-    Variable::from_tensor(self.clone(), false)
+    Variable::from_tensor(self.clone(), false, None)
+  }
+
+  pub(crate) fn input(&self, traintape: RcCell<Traintape<T>>) -> Variable<T> {
+    Variable::from_tensor(self.clone(), false, Some(traintape))
   }
 }
 
@@ -759,12 +742,7 @@ impl<T: Inner> Iterator for TensorSliceIterator<'_, T> {
 /// Iterate a [Tensor]'s individual parameters.
 
 pub struct TensorIterator<'a, T: Inner> {
-  #[cfg(not(feature = "threading"))]
-  data: Ref<'a, Vec<T>>,
-
-  #[cfg(feature = "threading")]
-  data: RwLockReadGuard<'a, Vec<T>>,
-
+  data: RefT<'a, Vec<T>>,
   shape_iter: Box<dyn Iterator<Item=usize> + 'a>,
 }
 

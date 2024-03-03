@@ -11,13 +11,14 @@ use crate::{
   scalar::Real,
   shape::Shape,
   tensor::Tensor,
-  variable::{ Variable, Node, NodeCell, Op },
+  variable::{ Variable, Node, NodeCell, Op, Traintape },
 };
 
 
 pub struct GraphModel<T: Real + 'static> {
   pub graph: Option<Graph<T>>,
   model: Box<dyn Fn(&[Variable<T>]) -> Vec<Variable<T>>>,
+  traintape: RcCell<Traintape<T>>,
 }
 
 impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
@@ -25,59 +26,25 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     Self {
       graph: None,
       model: Box::new(model),
+      traintape: make_rc_cell(Traintape { tape: vec![], counter: 0 }),
     }
   }
 
-  pub fn build_graph(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
-    let inputs: Vec<_> = inputs.iter().map(|input| input.tracked() ).collect();
-    let outputs = (self.model)(&inputs);
-    Graph::new(&inputs, &outputs)
-  }
-
   pub fn run(&mut self, output: usize, inputs: &[&Tensor<T>]) -> &Variable<T> {
-    if self.graph.is_none() {
+    borrow_mut(&self.traintape).counter = 0;
+    if self.graph.is_none() || self.graph.as_ref().unwrap().inputs.iter().zip(inputs).any(|(input, data)| input.dim(0) != data.dim(0) ) {
       // First run init
       self.graph = Some(self.build_graph(inputs));
     } else {
-      let graph = self.graph.as_ref().unwrap();
-      let mut inputs = inputs.to_vec();
-      // Insert missing inputs to keep number of graph nodes fixed
-      let diff = graph.inputs.len() - inputs.len();
-      let start = inputs.len();
-      let batch_dim = inputs[0].dim(0); //XXX determine dynamically by comparing dims of primary inputs
-      let missing: Vec<_> = (0..diff).map(|i| {
-        let j = start + i;
-        let mut shape = graph.inputs[j].shape().dims.clone();
-        shape[0] = batch_dim;
-        Tensor::scalar(T::from(0.0).unwrap()).broadcast(&Shape::new(&shape), None)
-      }).collect();
-      for dummy in &missing { inputs.push(dummy) }
-      if graph.inputs.iter().zip(&inputs).any(|(input, data)| input.dim(0) != data.dim(0) ) {
-        // Batch dimension changed -> Re-run full model & replace graph
-        let new = self.build_graph(&inputs);
-        let new = Self::replace_trained(&new, &graph);
-        for node in new.history() { node.forward() }
-        self.graph = Some(new);
-      } else {
-        // Update original graph
-        self.graph.as_mut().unwrap().run(output, &inputs);
-      }
+      // Update original graph
+      self.graph.as_mut().unwrap().run(output, &inputs);
     }
     &self.graph.as_ref().unwrap().outputs[output]
   }
 
-  fn replace_trained(graph: &Graph<T>, old_graph: &Graph<T>) -> Graph<T> {
-    let mut table: HashMap<usize, RcT<Node<T>>> = HashMap::new();
-    for (node, old) in graph.history().iter().zip(&old_graph.history()) {
-      let mut clone = (** if node.trainable { old } else { node }).clone();
-      clone.id = old.id; // Ensure that optimizers can still look up gradients & keep order stable for Graph#history to work
-      clone.previous = clone.previous.iter().map(|prev| {
-        table.get(&prev.id).unwrap().clone()
-      }).collect();
-      table.insert(node.id, RcT::new(clone));
-    }
-    let inputs: Vec<_> = graph.inputs.iter().map(|input| Variable { node: table.get(&input.id()).unwrap().clone() } ).collect();
-    let outputs: Vec<_> = graph.outputs.iter().map(|output| Variable { node: table.get(&output.id()).unwrap().clone() } ).collect();
+  fn build_graph(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
+    let inputs: Vec<_> = inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect();
+    let outputs = (self.model)(&inputs);
     Graph::new(&inputs, &outputs)
   }
 }
@@ -170,6 +137,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         op: dump.op,
         previous,
         trainable: dump.trainable,
+        traintape: None,
       };
       nodes.insert(node.id, RcT::new(node));
     }

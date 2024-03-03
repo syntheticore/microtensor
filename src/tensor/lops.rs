@@ -1,4 +1,6 @@
 use std::ops::Range;
+
+#[cfg(feature = "threading")]
 use std::thread;
 
 use crate::{
