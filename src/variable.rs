@@ -400,6 +400,10 @@ impl<T: Real> Variable<T> {
 
   pub fn tracked(&self) -> Self { panic!("Tensor is already being tracked") }
   pub fn trained(&self) -> Self { panic!("Tensor is already being tracked") }
+
+  pub fn retrained(&self, generator: impl Fn() -> Tensor<T>) -> Self {
+    Self::from_tensor(generator().detach(), true, self.node.traintape.clone())
+  }
 }
 
 impl<T: Real> std::ops::AddAssign<Tensor<T>> for Variable<T> {

@@ -567,20 +567,16 @@ impl<T: Real> Tensor<T> {
   //XXX Should collapse last dimension and return Tensor
   pub fn sample(&self) -> usize {
     let mut rng = rand::thread_rng();
-    let dist = WeightedIndex::new(&self.cast::<f64>().into_raw()).unwrap();
+    let dist = WeightedIndex::new(&self.cast::<f64>().complete().into_raw()).unwrap();
     dist.sample(&mut rng)
-  }
-
-  pub fn trained(&self) -> Variable<T> {
-    Variable::from_tensor(self.detach(), true, None)
-  }
-
-  pub fn retrained(&self, input: &Variable<T>) -> Variable<T> {
-    Variable::from_tensor(self.detach(), true, input.node.traintape.clone())
   }
 
   pub fn tracked(&self) -> Variable<T> {
     Variable::from_tensor(self.clone(), false, None)
+  }
+
+  pub fn trained(&self) -> Variable<T> {
+    Variable::from_tensor(self.detach(), true, None)
   }
 
   pub(crate) fn input(&self, traintape: RcCell<Traintape<T>>) -> Variable<T> {

@@ -15,8 +15,8 @@ use crate::{
 };
 
 
-pub trait Tracer<T: Real>: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static{ }
-impl<T: Real, F> Tracer<T> for F where F: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static { }
+pub trait Tracer<T: Real>: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync {}
+impl<T: Real, F> Tracer<T> for F where F: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync {}
 
 impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,15 +28,15 @@ impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
 #[derive(Debug)]
 pub struct GraphModel<T: Real + 'static> {
   pub graph: Graph<T>,
-  runner: Box<dyn Tracer<T>>,
+  tracer: Box<dyn Tracer<T>>,
   traintape: RcCell<Traintape<T>>,
 }
 
 impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
-  pub fn new(runner: impl Tracer<T>) -> Self {
+  pub fn new(tracer: impl Tracer<T> + 'static) -> Self {
     Self {
       graph: Graph { inputs: vec![], outputs: vec![] },
-      runner: Box::new(runner),
+      tracer: Box::new(tracer),
       traintape: make_rc_cell(Traintape { tape: vec![], counter: 0 }),
     }
   }
@@ -61,7 +61,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
   fn trace(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
     borrow_mut(&self.traintape).counter = 0;
     let inputs: Vec<_> = inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect();
-    let outputs = (self.runner)(&inputs);
+    let outputs = (self.tracer)(&inputs);
     Graph::new(&inputs, &outputs)
   }
 }
