@@ -356,6 +356,11 @@ where
 
     conv.reshape(&[padded.dim(0), kernels.dim(0), out_width, out_height])
   }
+
+  fn cross_entropy(&self, other: &Self) -> Self {
+    let this = self + I::from(1e-9).unwrap();
+    (&this.log() * other).sum(-1) * (-I::one())
+  }
 }
 
 
