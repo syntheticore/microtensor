@@ -48,7 +48,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
         .iter().zip(inputs)
         .any(|(input, data)| input.dim(0) != data.dim(0) )
     ;
-    // Retrace when batch dimension have changed or on first run
+    // Retrace when batch dimensions have changed or on first run
     if retrace {
       self.graph = self.trace(inputs);
     } else {

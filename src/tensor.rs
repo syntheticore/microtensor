@@ -572,15 +572,15 @@ impl<T: Real> Tensor<T> {
   }
 
   pub fn tracked(&self) -> Variable<T> {
-    Variable::from_tensor(self.clone(), false, None)
+    Variable::from_tensor(self.clone(), false)
   }
 
   pub fn trained(&self) -> Variable<T> {
-    Variable::from_tensor(self.detach(), true, None)
+    Variable::from_tensor(self.detach(), true)
   }
 
   pub(crate) fn input(&self, traintape: RcCell<Traintape<T>>) -> Variable<T> {
-    Variable::from_tensor(self.clone(), false, Some(traintape))
+    Variable::from_tape(false, &traintape, || self.clone())
   }
 }
 

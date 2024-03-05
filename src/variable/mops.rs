@@ -14,11 +14,11 @@ use crate::{
 
 impl<T: Real> BaseOps<T> for Variable<T> {
   fn scalar(item: T) -> Self {
-    Self::from_tensor(Tensor::scalar(item), false, None)
+    Self::from_tensor(Tensor::scalar(item), false)
   }
 
   fn fill(shape: &[usize], filler: T) -> Self {
-    Self::from_tensor(Tensor::fill(shape, filler), false, None)
+    Self::from_tensor(Tensor::fill(shape, filler), false)
   }
 
   fn shape(&self) -> &Shape {

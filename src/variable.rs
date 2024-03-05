@@ -207,22 +207,31 @@ impl<T: Real> From<T> for Variable<T> {
 }
 
 impl<T: Real> Variable<T> {
-  pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool, traintape: Option<RcCell<Traintape<T>>>) -> Self {
-    let node = if trainable && let Some(ref traintape_rc) = traintape {
-      let mut traintape = borrow_mut(traintape_rc);
+  pub(crate) fn from_tensor(tensor: Tensor<T>, trainable: bool) -> Self {
+    Self { node: RcT::new(Node::new(tensor, trainable, None)) }
+  }
+
+  pub(crate) fn from_tape(trainable: bool, traintape_rc: &RcCell<Traintape<T>>, generator: impl Fn() -> Tensor<T>) -> Self {
+    let node = if trainable {
+      let mut traintape = borrow_mut(&traintape_rc);
       traintape.counter += 1;
       if traintape.counter <= traintape.tape.len() {
         let clone = (*traintape.tape[traintape.counter - 1]).clone();
         RcT::new(clone)
       } else {
-        let node = RcT::new(Node::new(tensor, true, Some(traintape_rc.clone())));
+        let node = RcT::new(Node::new(generator().detach(), true, Some(traintape_rc.clone())));
         traintape.tape.push(node.clone());
         node
       }
     } else {
-      RcT::new(Node::new(tensor, trainable, traintape))
+      RcT::new(Node::new(generator().detach(), false, Some(traintape_rc.clone())))
     };
     Self { node }
+  }
+
+  pub fn retrained(&self, generator: impl Fn() -> Tensor<T>) -> Self {
+    let traintape = self.node.traintape.as_ref().expect("Called #retrained on a Variable that wasn't generated from graph inputs");
+    Self::from_tape(true, traintape, generator)
   }
 
   fn operation(op: Op, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
@@ -400,10 +409,6 @@ impl<T: Real> Variable<T> {
 
   pub fn tracked(&self) -> Self { panic!("Tensor is already being tracked") }
   pub fn trained(&self) -> Self { panic!("Tensor is already being tracked") }
-
-  pub fn retrained(&self, generator: impl Fn() -> Tensor<T>) -> Self {
-    Self::from_tensor(generator().detach(), true, self.node.traintape.clone())
-  }
 }
 
 impl<T: Real> std::ops::AddAssign<Tensor<T>> for Variable<T> {
