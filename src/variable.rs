@@ -69,7 +69,7 @@ pub(crate) struct Node<T: Real> {
   op: Option<Op>,
   previous: Vec<RcT<Self>>,
   trainable: bool,
-  pub traintape: Option<RcCell<Traintape<T>>>,
+  traintape: Option<RcCell<Traintape<T>>>,
 }
 
 #[derive(Debug, Clone)]

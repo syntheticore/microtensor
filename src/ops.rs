@@ -44,6 +44,7 @@ pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized 
   fn max(&self, dim: isize) -> Self;
   fn max_over(&self, _dim: isize) -> Self { todo!() }
   // fn compose(dims: &[usize], inputs: &[(Shape, Self)]) -> Self;
+  fn look_up(&self, rhs: &Self) -> Self;
 }
 
 
@@ -306,7 +307,7 @@ where
   }
 
   fn silu(&self) -> Self {
-    self.swish(&Self::scalar(I::one()))
+    self * &self.sigmoid()
   }
 
   fn softmax(&self, dim: isize) -> Self {

@@ -94,6 +94,10 @@ impl<T: Real> NumericOps<T> for Variable<T> {
   //   let others: Vec<_> = inputs.iter().map(|(_, other)| other ).collect();
   //   Self::multi_op(Compose { dims: dims.to_vec(), masks }, &others)
   // }
+
+  fn look_up(&self, rhs: &Self) -> Self {
+    self.binary_op(LookUp, rhs)
+  }
 }
 
 impl<T: Real> SignedOps<T> for Variable<T> {
@@ -401,6 +405,26 @@ impl<T: Real> UnaryOp<T> for Range {
   }
 
   fn as_enum(self) -> UnaryMops { UnaryMops::Range(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LookUp;
+
+impl<T: Real> BinaryOp<T> for LookUp {
+  fn run(&self, table: &Tensor<T>, tokens: &Tensor<T>) -> Tensor<T> {
+    table.look_up(tokens)
+  }
+
+  fn derive(&self, table: &Tensor<T>, tokens: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
+    let out = Tensor::zeros(&table.shape().dims);
+    for (tok_grad, token) in grad.iter(-2).zip(tokens.iter(-1)) {
+      out.at(&[token.cast().item()]).op_assign(&tok_grad, |a, b| *a += b )
+    }
+    (out, Tensor::scalar(T::from(0.0).unwrap()))
+  }
+
+  fn as_enum(self) -> BinaryMops { BinaryMops::LookUp(self) }
 }
 
 
@@ -793,6 +817,7 @@ pub enum BinaryMops {
   MatMul(MatMul),
   Concat(Concat),
   AssignMasked(AssignMasked),
+  LookUp(LookUp),
   Pow(Pow),
 }
 
@@ -807,6 +832,7 @@ impl BinaryMops {
       Self::MatMul(op) => op,
       Self::Concat(op) => op,
       Self::AssignMasked(op) => op,
+      Self::LookUp(op) => op,
       Self::Pow(op) => op,
     }
   }

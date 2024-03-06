@@ -205,6 +205,11 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
   //   }
   //   composed
   // }
+
+  fn look_up(&self, tokens: &Self) -> Self {
+    let tokens = tokens.cast();
+    tokens.expand(|t| self.at(&[t]).detach().into_raw() )
+  }
 }
 
 impl<T: Signed> SignedOps<T> for Tensor<T> {
