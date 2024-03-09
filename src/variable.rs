@@ -62,7 +62,7 @@ enum Op {
 /// Node in a computation graph, containing a [Variable]'s data and gradient,
 /// as well as the operation used to create it.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Node<T: Real> {
   pub id: usize,
   cell: NodeCell<T>,
@@ -72,13 +72,13 @@ pub(crate) struct Node<T: Real> {
   traintape: Option<RcCell<Traintape<T>>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct NodeCell<T: Real> {
   data: Tensor<T>,
   grad: Option<Tensor<T>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Traintape<T: Real> {
   tape: Vec<RcT<Node<T>>>,
   counter: usize,

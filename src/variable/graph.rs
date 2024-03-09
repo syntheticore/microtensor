@@ -41,7 +41,12 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     }
   }
 
-  pub fn run(&mut self, output: usize, inputs: &[&Tensor<T>]) -> &Variable<T> {
+  pub fn run(&self, output: usize, inputs: &[&Tensor<T>]) -> Variable<T> {
+    let graph = self.trace(inputs);
+    graph.outputs[output].clone()
+  }
+
+  pub fn run_traced(&mut self, output: usize, inputs: &[&Tensor<T>]) -> &Variable<T> {
     let retrace =
       self.graph.inputs.len() != inputs.len() ||
       self.graph.inputs
@@ -63,6 +68,25 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     let inputs: Vec<_> = inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect();
     let outputs = (self.tracer)(&inputs);
     Graph::new(&inputs, &outputs)
+  }
+
+  pub fn load(&mut self, filename: &str) -> io::Result<()> {
+    let bytes = fs::read(filename)?;
+    let dump: Traintape<T> = postcard::from_bytes(&bytes)
+      .expect(&format!("Could not load model from {}", filename));
+    self.traintape = make_rc_cell(dump);
+    Ok(())
+  }
+
+  pub fn save(&self, filename: &str) -> io::Result<()> {
+    let mut traintape = borrow_mut(&self.traintape);
+    traintape.tape = traintape.tape.iter().map(|node| {
+      let mut clone = (**node).clone();
+      clone.traintape = None;
+      RcT::new(clone)
+    }).collect();
+    let dump = postcard::to_allocvec(&*traintape).unwrap();
+    fs::write(filename, dump)
   }
 }
 
