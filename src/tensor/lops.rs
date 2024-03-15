@@ -142,11 +142,7 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let iter = lhs.iter(-3).zip(rhs.iter(-3));
 
     #[cfg(feature = "threading")]
-    let data = if lhs.shape[-3] == 1 {
-      iter
-        .flat_map(|(ml, mr)| ml.matmul(&mr) )
-        .collect()
-    } else {
+    let data =
       thread::scope(|s| {
         iter
           .map(|(ml, mr)|
@@ -154,8 +150,7 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
           ).collect::<Vec<_>>().into_iter()
           .flat_map(|h| h.join().unwrap() )
           .collect()
-      })
-    };
+      });
 
     #[cfg(not(feature = "threading"))]
     let data = iter
