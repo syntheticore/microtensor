@@ -151,7 +151,7 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
         iter
           .map(|(ml, mr)|
             s.spawn(move || ml.matmul(&mr) )
-          )
+          ).collect::<Vec<_>>().into_iter()
           .flat_map(|h| h.join().unwrap() )
           .collect()
       })
