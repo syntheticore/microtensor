@@ -287,10 +287,10 @@ impl<T: Real> Variable<T> {
 
   pub fn multi_op(op: impl MultiOp<T> + 'static, inputs: &[&Self]) -> Self {
     let tensors: Vec<&Tensor<T>> = inputs.iter().map(|input| &input.node.cell.data ).collect();
-    let data = op.run(&tensors);
+    let _data = op.run(&tensors);
     Self::operation(
       Op::Multi(op.as_enum()),
-      data,
+      _data,
       inputs.iter().any(|input| input.grad().is_some() ),
       inputs.iter().map(|input| input.node.clone() ).collect(),
     )
@@ -389,7 +389,7 @@ impl<T: Real> Variable<T> {
     (grad - num_grad).abs().mean(0).item()
   }
 
-  pub fn print(&self) {
+  pub fn summary(&self) {
     let history = self.history();
     let num_nodes = history.len();
     let num_ops = history.iter().filter(|node| node.op.is_some() ).collect::<Vec<_>>().len();
@@ -409,6 +409,10 @@ impl<T: Real> Variable<T> {
 
   pub fn tracked(&self) -> Self { panic!("Tensor is already being tracked") }
   pub fn trained(&self) -> Self { panic!("Tensor is already being tracked") }
+
+  pub fn stop_gradient(&self) -> Self {
+    self.tensor().tracked()
+  }
 }
 
 impl<T: Real> std::ops::AddAssign<Tensor<T>> for Variable<T> {

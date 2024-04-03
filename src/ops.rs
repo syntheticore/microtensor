@@ -20,6 +20,7 @@ pub trait Cops<I: Numeric> {
 pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
   fn scalar(item: I) -> Self;
   fn fill(shape: &[usize], filler: I) -> Self;
+  fn item(&self) -> I;
   fn shape(&self) -> &Shape;
   fn range(&self, ranges: &[Range<isize>]) -> Self;
   fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self;
@@ -361,6 +362,25 @@ where
   fn cross_entropy(&self, other: &Self) -> Self {
     let this = self + I::from(1e-9).unwrap();
     (&this.log() * other).sum(-1) * (-I::one())
+  }
+
+  fn mse(&self, other: &Self) -> Self {
+    (self - other).sqr().mean(0)
+  }
+
+  fn mae(&self, other: &Self) -> Self {
+    (self - other).abs().mean(0)
+  }
+
+  fn huber(&self, other: &Self, delta: I) -> Self {
+    let half = I::from(0.5).unwrap();
+    let diff = self - other;
+    let mae = diff.abs().mean(0);
+    if mae.item() < delta {
+      diff.sqr().mean(0) * half
+    } else {
+      (mae - (half * delta)) * delta
+    }
   }
 }
 

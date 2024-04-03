@@ -73,7 +73,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
   pub fn load(&mut self, filename: &str) -> io::Result<()> {
     let bytes = fs::read(filename)?;
     let dump: Traintape<T> = postcard::from_bytes(&bytes)
-      .expect(&format!("Could not load model from {}", filename));
+      .expect(&format!("Could not load graph model from {}", filename));
     self.traintape = make_rc_cell(dump);
     Ok(())
   }

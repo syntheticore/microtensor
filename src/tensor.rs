@@ -77,10 +77,12 @@ impl<T: Inner> Tensor<T> {
   }
 
   pub fn vec(vec: &[T]) -> Self {
+    assert!(vec.len() >= 1, "Cannot create Tensor from empty slice");
     Self::new(&[vec.len()], vec.to_vec())
   }
 
   pub fn from_vec(vec: Vec<T>) -> Self {
+    assert!(vec.len() >= 1, "Cannot create Tensor from empty vector");
     Self::new(&[vec.len()], vec)
   }
 
@@ -297,12 +299,6 @@ impl<T: Inner> Tensor<T> {
   // pub fn set(&mut self, indices: &[isize], other: &Self) {
   //   self.at(indices).assign(other)
   // }
-
-  pub fn item(&self) -> T {
-    debug_assert!(self.shape.squeeze_all().rank() == 0,
-      "Can't extract item from non-scalar {}", self.shape);
-    self.raw()[self.shape.offset].clone()
-  }
 
   pub fn view(&self, shape: &[usize]) -> Self {
     let shape = self.shape.view(shape);
@@ -567,7 +563,7 @@ impl<T: Real> Tensor<T> {
   //XXX Should collapse last dimension and return Tensor
   pub fn sample(&self) -> usize {
     let mut rng = rand::thread_rng();
-    let dist = WeightedIndex::new(&self.cast::<f64>().complete().into_raw()).unwrap();
+    let dist = WeightedIndex::new(&self.cast::<f32>().complete().into_raw()).unwrap();
     dist.sample(&mut rng)
   }
 
@@ -777,6 +773,9 @@ mod tests {
   fn range() {
     let x = Tensor::vec(&[3, 5, 6]);
     assert_eq!(x.range(&[1..-1]), Tensor::vec(&[5, 6]));
+
+    let x = Tensor::new(&[2, 3], vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(x.range(&[0..-1, 1..-1]), Tensor::new(&[2,2], vec![2, 3, 5, 6]));
   }
 
   #[test]

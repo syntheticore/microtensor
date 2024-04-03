@@ -21,6 +21,10 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     Self::from_tensor(Tensor::fill(shape, filler), false)
   }
 
+  fn item(&self) -> T {
+    self.node.cell.data.item()
+  }
+
   fn shape(&self) -> &Shape {
     self.node.cell.data.shape()
   }
