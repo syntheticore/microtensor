@@ -42,6 +42,11 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
   }
 
   pub fn run(&self, output: usize, inputs: &[&Tensor<T>]) -> Variable<T> {
+    let inputs: Vec<_> = inputs.into_iter().map(|input| input.tracked() ).collect();
+    self.run_raw(output, &inputs.iter().collect::<Vec<_>>())
+  }
+
+  pub fn run_raw(&self, output: usize, inputs: &[&Variable<T>]) -> Variable<T> {
     let graph = self.trace(inputs);
     graph.outputs[output].clone()
   }
@@ -55,7 +60,8 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     ;
     // Retrace when batch dimensions have changed or on first run
     if retrace {
-      self.graph = self.trace(inputs);
+      let inputs: Vec<_> = inputs.into_iter().map(|input| input.tracked() ).collect();
+      self.graph = self.trace(&inputs.iter().collect::<Vec<_>>());
     } else {
       // Update existing graph
       self.graph.run(output, &inputs);
@@ -63,10 +69,20 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     &self.graph.outputs[output]
   }
 
-  fn trace(&self, inputs: &[&Tensor<T>]) -> Graph<T> {
-    borrow_mut(&self.traintape).counter = 0;
-    let inputs: Vec<_> = inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect();
+  fn trace(&self, inputs: &[&Variable<T>]) -> Graph<T> {
+    let inputs: Vec<_> = if inputs.into_iter().any(|input| input.node.traintape.is_none() ) {
+      let tape = make_rc_cell(Traintape { tape: vec![], counter: 0 });
+      inputs.iter().map(|input| input.input(tape.clone()) ).collect()
+    } else {
+      inputs.into_iter().map(|&input| input.clone() ).collect()
+    };
+    {
+      let mut tape = borrow_mut(&inputs[0].node.traintape.as_ref().unwrap());
+      *tape = borrow(&self.traintape).clone();
+      tape.counter = 0;
+    }
     let outputs = (self.tracer)(&inputs);
+    *borrow_mut(&self.traintape) = borrow(inputs[0].node.traintape.as_ref().unwrap()).clone();
     Graph::new(&inputs, &outputs)
   }
 
