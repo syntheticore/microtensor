@@ -8,7 +8,7 @@ use crate::{
   tensor::Tensor,
   variable::{ Variable, UnaryOp, BinaryOp, MultiOp },
   scalar::Real,
-  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops },
+  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -126,6 +126,10 @@ impl<T: Real> RealOps<T> for Variable<T> {
 
   fn cos(&self) -> Self {
     self.unary_op(Cos)
+  }
+
+  fn tanh(&self) -> Self {
+    self.unary_op(Tanh)
   }
 
   fn log(&self) -> Self {
@@ -625,6 +629,22 @@ impl<T: Real> UnaryOp<T> for Cos {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tanh;
+
+impl<T: Real> UnaryOp<T> for Tanh {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.tanh()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    grad * (Tensor::scalar(T::one()) - lhs.tanh().sqr())
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::Tanh(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Log;
 
 impl<T: Real> UnaryOp<T> for Log {
@@ -781,6 +801,7 @@ pub enum UnaryMops {
   Layout(Layout),
   Sin(Sin),
   Cos(Cos),
+  Tanh(Tanh),
   Log(Log),
   Sum(Sum),
   Abs(Abs),
@@ -800,6 +821,7 @@ impl UnaryMops {
       Self::Layout(op) => op,
       Self::Sin(op) => op,
       Self::Cos(op) => op,
+      Self::Tanh(op) => op,
       Self::Log(op) => op,
       Self::Sum(op) => op,
       Self::Abs(op) => op,

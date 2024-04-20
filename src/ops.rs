@@ -63,6 +63,7 @@ pub trait RealOps<I: Real>: NumericOps<I> + SignedOps<I> {
   fn pow(&self, rhs: &Self) -> Self;
   fn sin(&self) -> Self;
   fn cos(&self) -> Self;
+  fn tanh(&self) -> Self;
   fn log(&self) -> Self;
   fn relu(&self) -> Self;
   fn sigmoid(&self) -> Self;
@@ -172,6 +173,33 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
       .map(|row| row.unsqueeze(0) )
       .collect();
     Self::stack(&rows, 0)
+  }
+
+  fn split(&self, size: usize, dim: isize) -> Vec<Self> {
+    let n = self.dim(dim) / size;
+    let remainder = self.dim(dim) % size;
+    let dim = negative_index(dim, self.rank(), false);
+    let slices = (0..n as isize)
+      .map(|i| {
+        let j = i * size as isize;
+        let mut ranges = vec![0..-1; dim + 1];
+        ranges[dim] = j .. j + size as isize;
+        self.range(&ranges)
+      })
+      .collect();
+    if remainder == 0 {
+      slices
+    } else {
+      let j = n as isize * size as isize;
+      let mut ranges = vec![0..-1; dim + 1];
+      ranges[dim] = j .. j + remainder as isize;
+      [slices, vec![self.range(&ranges)]].concat()
+    }
+  }
+
+  fn chunks(&self, n: usize, dim: isize) -> Vec<Self> {
+    let size = self.dim(dim) / n;
+    self.split(size, dim)
   }
 
   fn reshape_keep(&self, dims: &[isize]) -> Self {

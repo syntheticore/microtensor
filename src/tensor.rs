@@ -327,33 +327,6 @@ impl<T: Inner> Tensor<T> {
     self.zip(rhs, |(a, b)| a == b )
   }
 
-  pub fn split(&self, size: usize, dim: isize) -> Vec<Self> {
-    let n = self.shape[dim] / size;
-    let remainder = self.shape[dim] % size;
-    let dim = negative_index(dim, self.rank(), false);
-    let slices = (0..n as isize)
-      .map(|i| {
-        let j = i * size as isize;
-        let mut ranges = vec![0..-1; dim + 1];
-        ranges[dim] = j .. j + size as isize;
-        self.range(&ranges)
-      })
-      .collect();
-    if remainder == 0 {
-      slices
-    } else {
-      let j = n as isize * size as isize;
-      let mut ranges = vec![0..-1; dim + 1];
-      ranges[dim] = j .. j + remainder as isize;
-      [slices, vec![self.range(&ranges)]].concat()
-    }
-  }
-
-  pub fn chunks(&self, n: usize, dim: isize) -> Vec<Self> {
-    let size = self.shape[dim] / n;
-    self.split(size, dim)
-  }
-
   pub fn to_vec(&self, dim: isize) -> Vec<Self> {
     self.iter(dim).collect()
   }

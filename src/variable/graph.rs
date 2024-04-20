@@ -69,7 +69,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     &self.graph.outputs[output]
   }
 
-  fn trace(&self, inputs: &[&Variable<T>]) -> Graph<T> {
+  pub fn trace(&self, inputs: &[&Variable<T>]) -> Graph<T> {
     let inputs: Vec<_> = if inputs.into_iter().any(|input| input.node.traintape.is_none() ) {
       let tape = make_rc_cell(Traintape { tape: vec![], counter: 0 });
       inputs.iter().map(|input| input.input(tape.clone()) ).collect()

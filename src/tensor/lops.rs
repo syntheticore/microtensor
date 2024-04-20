@@ -237,6 +237,10 @@ impl<T: Real> RealOps<T> for Tensor<T> {
     self.vectorize(|a| a.cos() )
   }
 
+  fn tanh(&self) -> Self {
+    self.vectorize(|a| a.tanh() )
+  }
+
   fn log(&self) -> Self {
     self.vectorize(|a| a.ln() )
   }
