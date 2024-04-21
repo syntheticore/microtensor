@@ -134,12 +134,8 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     let (hx, cx) = state;
 
     let size = hx.dim(-1) * 4;
-    let gates = (self.dense(size) + hx.dense_taped(size, self)).chunks(4, -1);
-
-    let input_gate  = &gates[0];
-    let forget_gate = &gates[1];
-    let cell_gate   = &gates[2];
-    let output_gate = &gates[3];
+    let gates = self.dense(size) + hx.dense_taped(size, self);
+    let [input_gate, forget_gate, cell_gate, output_gate] = gates.chunks(4, -1).try_into().unwrap();
 
     let cy = cx * forget_gate.sigmoid() + input_gate.sigmoid() * cell_gate.tanh();
     let hy = output_gate.sigmoid() * cy.tanh();
