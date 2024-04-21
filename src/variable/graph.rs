@@ -26,18 +26,31 @@ impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
 
 
 #[derive(Debug)]
-pub struct GraphModel<T: Real + 'static> {
+pub struct Module<T: Real + 'static> {
   pub graph: Graph<T>,
   tracer: Box<dyn Tracer<T>>,
+  start_count: usize,
   traintape: RcCell<Traintape<T>>,
 }
 
-impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
+impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
   pub fn new(tracer: impl Tracer<T> + 'static) -> Self {
     Self {
       graph: Graph { inputs: vec![], outputs: vec![] },
       tracer: Box::new(tracer),
+      start_count: 0,
       traintape: make_rc_cell(Traintape { tape: vec![], counter: 0 }),
+    }
+  }
+
+  pub fn continued(tape_holder: &Variable<T>, tracer: impl Tracer<T> + 'static) -> Self {
+    let tape = tape_holder.node.traintape.as_ref()
+      .expect("Cannot continue Module from a Variable that wasn't generated from Module inputs");
+    Self {
+      graph: Graph { inputs: vec![], outputs: vec![] },
+      tracer: Box::new(tracer),
+      start_count: borrow(tape).counter,
+      traintape: tape.clone(),
     }
   }
 
@@ -79,7 +92,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> GraphModel<T> {
     {
       let mut tape = borrow_mut(&inputs[0].node.traintape.as_ref().unwrap());
       *tape = borrow(&self.traintape).clone();
-      tape.counter = 0;
+      tape.counter = self.start_count;
     }
     let outputs = (self.tracer)(&inputs);
     *borrow_mut(&self.traintape) = borrow(inputs[0].node.traintape.as_ref().unwrap()).clone();

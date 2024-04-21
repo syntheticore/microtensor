@@ -94,4 +94,4 @@ pub mod optimize;
 
 pub use shape::Shape;
 pub use tensor::Tensor;
-pub use variable::{ Variable, Graph, GraphModel, UnaryOp, BinaryOp, MultiOp };
+pub use variable::{ Variable, Graph, Module, Layer, UnaryOp, BinaryOp, MultiOp };

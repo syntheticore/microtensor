@@ -6,9 +6,10 @@ use serde::{Serialize, Deserialize};
 
 mod mops;
 mod graph;
+mod layer;
 
-pub use graph::Graph;
-pub use graph::GraphModel;
+pub use graph::{ Graph, Module };
+pub use layer::Layer;
 
 use crate::{
   internal::*,
@@ -227,11 +228,6 @@ impl<T: Real> Variable<T> {
       RcT::new(Node::new(generator().detach(), false, Some(traintape_rc.clone())))
     };
     Self { node }
-  }
-
-  pub fn retrained(&self, generator: impl Fn() -> Tensor<T>) -> Self {
-    let traintape = self.node.traintape.as_ref().expect("Called #retrained on a Variable that wasn't generated from graph inputs");
-    Self::from_tape(true, traintape, generator)
   }
 
   fn operation(op: Op, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
