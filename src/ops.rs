@@ -210,8 +210,9 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.reshape(&dims)
   }
 
-  fn flatten(&self) -> Self {
-    self.reshape(&[0]).squeeze_all()
+  fn flatten(&self, keep_dims: usize) -> Self {
+    let dims = [vec![-1; keep_dims], vec![0]].concat();
+    self.reshape_keep(&dims).squeeze_all()
   }
 
   fn windows(&self, shape: [usize; 2], step: [usize; 2]) -> Self {
