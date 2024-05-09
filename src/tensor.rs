@@ -502,9 +502,13 @@ impl<T: Numeric> std::iter::Sum for Tensor<T> {
 // Real
 
 impl<T: Real> Tensor<T> {
-  pub fn rand(shape: &[usize]) -> Self {
+  pub fn randr(shape: &[usize], min: T, max: T) -> Self {
     let mut rng = rand::thread_rng();
-    Self::init(shape, |_| rng.gen_range(T::zero(), T::one()) )
+    Self::init(shape, |_| rng.gen_range(min, max) )
+  }
+
+  pub fn rand(shape: &[usize]) -> Self {
+    Self::randr(shape, T::zero(), T::one())
   }
 
   pub fn randn(shape: &[usize]) -> Self {
@@ -517,6 +521,16 @@ impl<T: Real> Tensor<T> {
       data[(j + 1) % len] = r2;
     }
     Self::new(shape, data)
+  }
+
+  pub fn glorot_uniform(shape: &[usize]) -> Self {
+    let limit = T::from((6.0 / (shape[0] + shape[1]) as f64).sqrt()).unwrap();
+    Tensor::randr(shape, -limit, limit)
+  }
+
+  pub fn glorot_normal(shape: &[usize]) -> Self {
+    let gain = T::from((2.0 / (shape[0] + shape[1]) as f64).sqrt()).unwrap();
+    Tensor::randn(shape) * gain
   }
 
   pub fn linspace(shape: &[usize], start: T, end: T) -> Self {
