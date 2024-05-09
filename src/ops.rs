@@ -114,6 +114,12 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.range_back(&make_ranges(indices, self.shape()))
   }
 
+  fn select(&self, dim: isize, index: isize) -> Self {
+    let dim = negative_index(dim, self.rank(), false);
+    let ranges = [vec![0..-1; dim], vec![index..index + 1]].concat();
+    self.range(&ranges).squeeze(&[dim as isize])
+  }
+
   fn set(&mut self, indices: &[isize], other: &Self) -> Self {
     self.assign_masked(other, |shape|
       shape

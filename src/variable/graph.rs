@@ -15,8 +15,8 @@ use crate::{
 };
 
 
-pub trait Tracer<T: Real>: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync {}
-impl<T: Real, F> Tracer<T> for F where F: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync {}
+pub trait Tracer<T: Real>: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static {}
+impl<T: Real, F> Tracer<T> for F where F: Fn(&[Variable<T>]) -> Vec<Variable<T>> + Send + Sync + 'static {}
 
 impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,7 +34,7 @@ pub struct Module<T: Real + 'static> {
 }
 
 impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
-  pub fn new(tracer: impl Tracer<T> + 'static) -> Self {
+  pub fn new(tracer: impl Tracer<T>) -> Self {
     Self {
       graph: Graph { inputs: vec![], outputs: vec![] },
       tracer: Box::new(tracer),
@@ -43,7 +43,11 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
     }
   }
 
-  pub fn continued(tape_holder: &Variable<T>, tracer: impl Tracer<T> + 'static) -> Self {
+  pub fn simple(tracer: impl Fn(&Variable<T>) -> Variable<T> + Send + Sync + 'static) -> Self {
+    Self::new(move |inputs| vec![(tracer)(&inputs[0])] )
+  }
+
+  pub fn continued(tape_holder: &Variable<T>, tracer: impl Tracer<T>) -> Self {
     let tape = tape_holder.node.traintape.as_ref()
       .expect("Cannot continue Module from a Variable that wasn't generated from Module inputs");
     Self {
@@ -83,19 +87,13 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
   }
 
   pub fn trace(&self, inputs: &[&Variable<T>]) -> Graph<T> {
+    borrow_mut(&self.traintape).counter = self.start_count;
     let inputs: Vec<_> = if inputs.into_iter().any(|input| input.node.traintape.is_none() ) {
-      let tape = make_rc_cell(Traintape { tape: vec![], counter: 0 });
-      inputs.iter().map(|input| input.input(tape.clone()) ).collect()
+      inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect()
     } else {
       inputs.into_iter().map(|&input| input.clone() ).collect()
     };
-    {
-      let mut tape = borrow_mut(&inputs[0].node.traintape.as_ref().unwrap());
-      *tape = borrow(&self.traintape).clone();
-      tape.counter = self.start_count;
-    }
     let outputs = (self.tracer)(&inputs);
-    *borrow_mut(&self.traintape) = borrow(inputs[0].node.traintape.as_ref().unwrap()).clone();
     Graph::new(&inputs, &outputs)
   }
 

@@ -45,8 +45,7 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     let tape_holder = tape_holder.or_else(|| Some(self) ).unwrap();
     let weights = weights.or_else(|| Some(tape_holder.retrained(|| {
       let dims = [self.dim(-1), size];
-      let gain = I::from((2.0 / (dims[0] + dims[1]) as f64).sqrt()).unwrap();
-      Tensor::randn(&dims) * gain
+      Tensor::glorot_uniform(&dims)
     }))).unwrap();
     let bias = tape_holder.retrained(|| Tensor::zeros(&[size]) );
     (self.mm(&weights) + bias, weights)
@@ -102,13 +101,12 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     ).collect()));
 
     let block = Module::continued(self, move |inputs| vec![
-      inputs[0].lstm_block(num_layers, hidden.clone())
+      inputs[0]
+      .lstm_block(num_layers, hidden.clone())
     ]);
 
     let output: Vec<_> = (0..self.dim(1)).map(|t| {
-      let t = t as isize;
-      let ranges = [vec![0..-1; self.rank() - 2], vec![t..t + 1]].concat();
-      let input = self.range(&ranges).squeeze(&[1]);
+      let input = self.select(-2, t as isize);
       block.run_raw(0, &[&input, &zeros])
     }).collect();
 
