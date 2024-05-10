@@ -107,7 +107,7 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
 
     let output: Vec<_> = (0..self.dim(1)).map(|t| {
       let input = self.select(-2, t as isize);
-      block.run_raw(0, &[&input, &zeros])
+      block.run_raw(0, &[&input])
     }).collect();
 
     if full {

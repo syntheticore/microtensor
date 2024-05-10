@@ -88,11 +88,13 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
 
   pub fn trace(&self, inputs: &[&Variable<T>]) -> Graph<T> {
     borrow_mut(&self.traintape).counter = self.start_count;
-    let inputs: Vec<_> = if inputs.into_iter().any(|input| input.node.traintape.is_none() ) {
-      inputs.iter().map(|input| input.input(self.traintape.clone()) ).collect()
-    } else {
-      inputs.into_iter().map(|&input| input.clone() ).collect()
-    };
+    let inputs: Vec<_> = inputs.into_iter().map(|&input| {
+      if input.node.traintape.is_none() {
+        input.input(self.traintape.clone())
+      } else {
+        input.clone()
+      }
+    }).collect();
     let outputs = (self.tracer)(&inputs);
     Graph::new(&inputs, &outputs)
   }
