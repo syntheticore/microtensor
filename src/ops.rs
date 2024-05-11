@@ -28,7 +28,7 @@ pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
   fn squeeze(&self, dims: &[isize]) -> Self;
   fn unsqueeze(&self, dim: isize) -> Self; //XXX multiple dims
   fn transpose(&self, dim1: isize, dim2: isize) -> Self;
-  fn concat(&self, rhs: &Self, dim: isize) -> Self;
+  fn stack(inputs: &[Self], dim: isize) -> Self;
   fn assign_masked(&self, rhs: &Self, cb: impl Fn(&Shape) -> Shape) -> Self;
   fn layout(&self, cb: impl Fn(&Shape) -> Shape) -> Self;
 }
@@ -44,7 +44,6 @@ pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized 
   fn min(&self, dim: isize) -> Self;
   fn max(&self, dim: isize) -> Self;
   fn max_over(&self, _dim: isize) -> Self { todo!() }
-  // fn compose(dims: &[usize], inputs: &[(Shape, Self)]) -> Self;
   fn look_up(&self, rhs: &Self) -> Self;
 }
 
@@ -164,17 +163,11 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.unsqueeze_n(n, -1)
   }
 
-  fn stack(rows: &[Self], dim: isize) -> Self {
-    assert!(rows.len() >= 1);
-    let mut out = rows[0].clone();
-    for row in &rows[1..] {
-      out = out.concat(row, dim);
-    }
-    out
+  fn concat(&self, rhs: &Self, dim: isize) -> Self {
+    Self::stack(&[self.clone(), rhs.clone()], dim)
   }
 
   fn rows(rows: &[Self]) -> Self {
-    assert!(rows.len() >= 1);
     let rows: Vec<_> = rows.iter()
       .map(|row| row.unsqueeze(0) )
       .collect();

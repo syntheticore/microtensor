@@ -281,12 +281,12 @@ impl<T: Real> Variable<T> {
     )
   }
 
-  pub fn multi_op(op: impl MultiOp<T> + 'static, inputs: &[&Self]) -> Self {
+  pub fn multi_op(op: impl MultiOp<T> + 'static, inputs: &[Self]) -> Self {
     let tensors: Vec<&Tensor<T>> = inputs.iter().map(|input| &input.node.cell.data ).collect();
-    let _data = op.run(&tensors);
+    let data = op.run(&tensors);
     Self::operation(
       Op::Multi(op.as_enum()),
-      _data,
+      data,
       inputs.iter().any(|input| input.grad().is_some() ),
       inputs.iter().map(|input| input.node.clone() ).collect(),
     )

@@ -5,7 +5,7 @@ use std::thread;
 
 use crate::{
   internal::*,
-  shape::Shape,
+  shape::{ Shape, DimensionIterator },
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
   ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
@@ -66,26 +66,28 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     Self { shape, data }
   }
 
-  fn concat(&self, rhs: &Self, dim: isize) -> Self {
-    let dim = negative_index(dim, self.rank(), false);
+  fn stack(inputs: &[Self], dim: isize) -> Self {
+    assert!(inputs.len() >= 1, "Inputs may not be empty");
+
+    let dim = negative_index(dim, inputs[0].rank(), false);
+    let mut dims = inputs[0].shape.dims.clone();
+    dims[dim] = inputs.iter().map(|input| input.shape.dims[dim] ).sum();
+
+    debug_assert!(inputs.windows(2).all(|w|
+      w[0].shape.dims.len() == w[1].shape.dims.len() &&
+      w[0].shape.dims.iter().zip(&w[1].shape.dims).filter(|(a,b)| *a == *b ).count() >= dims.len() - 1
+    ), "Cannot stack tensors. Shapes may only differ in dim {dim}");
+
     let data = if dim == 0 {
-      [self.detach().into_raw(), rhs.detach().into_raw()].concat()
+      inputs.iter().map(|input| input.detach().into_raw() ).collect::<Vec<_>>().concat()
     } else {
-      let dim = dim as isize - 1;
-      self.iter(dim)
-        .zip(rhs.iter(dim))
-        .flat_map(|(a, b)| vec![a.detach().into_raw(), b.detach().into_raw()] )
-        .collect::<Vec<_>>()
-        .concat()
+      let iter = DimensionIterator::new(&inputs[0].shape.dims[0..dim]);
+      iter.flat_map(|dims| {
+        inputs.iter().flat_map(move |input| input.at(&dims).detach().into_raw() )
+      }).collect::<Vec<_>>()
     };
-    let mut dims_l = self.shape.dims.clone();
-    dims_l[dim] += rhs.shape.dims[dim];
-    let mut dims_r = rhs.shape.dims.clone();
-    dims_r[dim] += self.shape.dims[dim];
-    assert_eq!(dims_l, dims_r,
-      "Cannot concat {} & {} tensors. Shapes may only differ in dim {}",
-      self.shape, rhs.shape, dim);
-    Self::new(&dims_l, data)
+
+    Self::new(&dims, data)
   }
 
   fn assign_masked(&self, other: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
@@ -203,14 +205,6 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
         .unwrap()
     })
   }
-
-  // fn compose(dims: &[usize], assignments: &[(Shape, Self)]) -> Self {
-  //   let composed = Self::zeros(dims);
-  //   for (mask, other) in assignments {
-  //     composed.assign_masked(other, mask);
-  //   }
-  //   composed
-  // }
 
   fn look_up(&self, tokens: &Self) -> Self {
     let tokens = tokens.cast();

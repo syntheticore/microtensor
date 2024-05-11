@@ -57,8 +57,8 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.unary_op(Transpose { dim1, dim2 })
   }
 
-  fn concat(&self, rhs: &Self, dim: isize) -> Self {
-    self.binary_op(Concat { dim }, rhs)
+  fn stack(inputs: &[Self], dim: isize) -> Self {
+    Self::multi_op(Stack { dim }, inputs)
   }
 
   fn assign_masked(&self, rhs: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
@@ -92,12 +92,6 @@ impl<T: Real> NumericOps<T> for Variable<T> {
   fn max(&self, dim: isize) -> Self {
     self.unary_op(Max { dim })
   }
-
-  // fn compose(dims: &[usize], inputs: &[(Shape, Self)]) -> Self {
-  //   let masks = inputs.iter().map(|(mask, _)| mask.clone() ).collect();
-  //   let others: Vec<_> = inputs.iter().map(|(_, other)| other ).collect();
-  //   Self::multi_op(Compose { dims: dims.to_vec(), masks }, &others)
-  // }
 
   fn look_up(&self, rhs: &Self) -> Self {
     self.binary_op(LookUp, rhs)
@@ -505,30 +499,29 @@ impl<T: Real> UnaryOp<T> for Transpose {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Concat {
+pub struct Stack {
   dim: isize,
 }
 
-impl<T: Real> BinaryOp<T> for Concat {
-  fn run(&self, lhs: &Tensor<T>, rhs: &Tensor<T>) -> Tensor<T> {
-    lhs.concat(rhs, self.dim)
+impl<T: Real> MultiOp<T> for Stack {
+  fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T> {
+    let inputs: Vec<_> = inputs.iter().map(|&input| input.clone() ).collect();
+    Tensor::stack(&inputs, self.dim)
   }
 
-  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
-    let size_l = lhs.dim(self.dim);
-    let size_r = rhs.dim(self.dim);
+  fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>> {
     let dim = negative_index(self.dim, grad.rank(), false);
-
-    let mut ranges_l = vec![0..-1; dim + 1];
-    let mut ranges_r = ranges_l.clone();
-    let size_l = size_l as isize;
-    ranges_l[dim] = 0..size_l;
-    ranges_r[dim] = size_l..size_l + size_r as isize;
-
-    (grad.range(&ranges_l), grad.range(&ranges_r))
+    let mut offset = 0;
+    inputs.iter().map(|input| {
+      let size = input.dim(self.dim) as isize;
+      let mut ranges = vec![0..-1; dim + 1];
+      ranges[dim] = offset..offset + size;
+      offset += size;
+      grad.range(&ranges)
+    }).collect()
   }
 
-  fn as_enum(self) -> BinaryMops { BinaryMops::Concat(self) }
+  fn as_enum(self) -> MultiMops { MultiMops::Stack(self) }
 }
 
 
@@ -774,24 +767,6 @@ impl<T: Real> UnaryOp<T> for Sigmoid {
 }
 
 
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct Compose {
-//   dims: Vec<usize>,
-//   masks: Vec<Shape>,
-// }
-
-// impl<T: Real> MultiOp<T> for Compose {
-//   fn run(&self, inputs: &[&Tensor<T>]) -> Tensor<T> {
-//     let masked_inputs: Vec<_> = inputs.iter().enumerate().map(|(i, &input)| (self.masks[i].clone(), input.clone())).collect();
-//     Tensor::compose(&self.dims, &masked_inputs)
-//   }
-
-//   fn derive(&self, inputs: &[&Tensor<T>], grad: &Tensor<T>) -> Vec<Tensor<T>> {
-//     inputs.iter().map(|_| grad.clone() ).collect()
-//   }
-// }
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum UnaryMops {
   Range(Range),
@@ -841,7 +816,6 @@ pub enum BinaryMops {
   Div(Div),
   Rem(Rem),
   MatMul(MatMul),
-  Concat(Concat),
   AssignMasked(AssignMasked),
   LookUp(LookUp),
   Pow(Pow),
@@ -856,7 +830,6 @@ impl BinaryMops {
       Self::Div(op) => op,
       Self::Rem(op) => op,
       Self::MatMul(op) => op,
-      Self::Concat(op) => op,
       Self::AssignMasked(op) => op,
       Self::LookUp(op) => op,
       Self::Pow(op) => op,
@@ -865,12 +838,14 @@ impl BinaryMops {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MultiMops {}
+pub enum MultiMops {
+  Stack(Stack)
+}
 
 impl MultiMops {
   pub fn as_multi_op<T: Real>(&self) -> &dyn MultiOp<T> {
     match self {
-      _ => todo!(),
+      Self::Stack(op) => op,
     }
   }
 }
