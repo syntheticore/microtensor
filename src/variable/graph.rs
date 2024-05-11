@@ -1,6 +1,7 @@
 use std::io;
 use std::fs;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 
 use itertools::Itertools;
 use serde::{ Serialize, Deserialize, de::DeserializeOwned };
@@ -11,7 +12,7 @@ use crate::{
   scalar::Real,
   shape::Shape,
   tensor::Tensor,
-  variable::{ Variable, Node, NodeCell, Op, Traintape },
+  variable::{ Variable, Node, NodeCell, Op, Traintape, LAST_ID },
 };
 
 
@@ -101,9 +102,11 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
 
   pub fn load(&mut self, filename: &str) -> io::Result<()> {
     let bytes = fs::read(filename)?;
-    let dump: Traintape<T> = postcard::from_bytes(&bytes)
+    let tape: Traintape<T> = postcard::from_bytes(&bytes)
       .expect(&format!("Could not load graph model from {}", filename));
-    self.traintape = make_rc_cell(dump);
+    let highest_id = tape.tape.iter().map(|node| node.id ).max().unwrap();
+    LAST_ID.store(LAST_ID.load(Ordering::Relaxed).max(highest_id + 1), Ordering::Relaxed);
+    self.traintape = make_rc_cell(tape);
     Ok(())
   }
 

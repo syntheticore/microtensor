@@ -19,8 +19,9 @@ use crate::{
 };
 
 
+pub static LAST_ID: AtomicUsize = AtomicUsize::new(0);
+
 pub fn make_id() -> usize {
-  static LAST_ID: AtomicUsize = AtomicUsize::new(0);
   LAST_ID.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -392,13 +393,13 @@ impl<T: Real> Variable<T> {
     let num_grads = history.iter().filter(|node| node.cell.grad.is_some() ).collect::<Vec<_>>().len();
     let params = self.parameters();
     let num_variables = params.len();
-    let num_trainable_params: usize = params.iter().map(|param| param.shape().size() ).sum();
+    let num_trainable_params: usize = params.iter().map(|param| param.size() ).sum();
     println!("# Nodes: {num_nodes}");
     println!("# Operations: {num_ops}");
     println!("# Gradients: {num_grads}");
     println!("# Trained Tensors: {num_variables}");
     println!("# Total Parameters: {num_trainable_params}");
-    for param in self.parameters() {
+    for param in params {
       println!("{} -> {}", param.shape(), param.shape().size());
     }
   }
