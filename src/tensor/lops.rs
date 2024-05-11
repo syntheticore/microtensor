@@ -79,11 +79,11 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     ), "Cannot stack tensors. Shapes may only differ in dim {dim}");
 
     let data = if dim == 0 {
-      inputs.iter().map(|input| input.detach().into_raw() ).collect::<Vec<_>>().concat()
+      inputs.into_iter().flat_map(|input| input.param_iter() ).collect::<Vec<_>>()
     } else {
       let iter = DimensionIterator::new(&inputs[0].shape.dims[0..dim]);
       iter.flat_map(|dims| {
-        inputs.iter().flat_map(move |input| input.at(&dims).detach().into_raw() )
+        inputs.iter().flat_map(move |input| input.at(&dims).extract() )
       }).collect::<Vec<_>>()
     };
 
@@ -208,7 +208,7 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
 
   fn look_up(&self, tokens: &Self) -> Self {
     let tokens = tokens.cast();
-    tokens.expand(|t| self.at(&[t]).detach().into_raw() )
+    tokens.expand(|t| self.at(&[t]).extract() )
   }
 }
 

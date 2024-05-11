@@ -93,26 +93,6 @@ impl<T: Inner> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
-  pub fn fast_rows(rows: &[Tensor<T>]) -> Self {
-    let mut dims = rows[0].shape.dims.clone();
-    dims.insert(0, rows.len());
-    let data = rows.iter()
-      .map(|row| row.detach().into_raw() )
-      .collect::<Vec<_>>()
-      .concat();
-    Self::new(&dims, data)
-  }
-
-  // pub fn stack(rows: &[Tensor<T>]) -> Self { //XXX write as Hop over concat
-  //   let mut dims = rows[0].shape.dims.clone();
-  //   dims[0] = rows.iter().map(|row| row.shape[0] ).sum();
-  //   let data = rows.iter()
-  //     .map(|row| row.detach().into_raw() )
-  //     .collect::<Vec<_>>()
-  //     .concat();
-  //   Self::new(&dims, data)
-  // }
-
   pub fn raw(&self) -> RefT<Vec<T>> {
     borrow(&self.data)
   }
@@ -133,6 +113,10 @@ impl<T: Inner> Tensor<T> {
 
   pub fn shared_with(&self, other: &Self) -> bool {
     RcT::ptr_eq(&self.data, &other.data)
+  }
+
+  pub fn extract(&self) -> Vec<T> {
+    self.param_iter().collect()
   }
 
   pub fn contiguous(&self) -> Self {
@@ -331,15 +315,11 @@ impl<T: Inner> Tensor<T> {
     self.iter(dim).collect()
   }
 
-  // pub fn flatten(&self) -> Self {
-  //   Self::from_vec(self.param_iter().collect())
-  // }
-
   pub fn shuffle(&self, dim: isize) -> Self {
     self.unsqueeze(0).map(dim, |sub| {
       let mut sub = sub.to_vec(0);
       sub.shuffle(&mut rand::thread_rng());
-      Self::fast_rows(&sub)
+      Self::rows(&sub)
     }).squeeze_only(0)
   }
 }
@@ -347,14 +327,6 @@ impl<T: Inner> Tensor<T> {
 // Numeric
 
 impl<T: Numeric> Tensor<T> {
-  // pub fn ones(shape: &[usize]) -> Self {
-  //   Self::fill(shape, T::one())
-  // }
-
-  // pub fn zeros(shape: &[usize]) -> Self {
-  //   Self::fill(shape, T::zero())
-  // }
-
   pub fn arrange(shape: &[usize], start: T, step: T) -> Self {
     Self::new(shape, (0..shape.iter().product())
       .map(|i| T::from(i).unwrap() * step + start )
@@ -425,7 +397,7 @@ impl<T: Numeric> Tensor<T> {
   pub fn top_k(&self, k: usize, dim: isize) -> Self {
     let dim = negative_index(dim, self.shape.rank() - 1, true);
     self.unsqueeze(0).map(dim as isize, |t| {
-      let mut data = t.detach().into_raw();
+      let mut data = t.extract();
       data.sort_by(|a, b| b.partial_cmp(a).unwrap() );
       Self::new(&[k], data[..k].to_vec())
     }).squeeze_only(0)
