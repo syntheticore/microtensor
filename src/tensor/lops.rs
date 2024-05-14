@@ -206,6 +206,21 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     })
   }
 
+  fn max_over(&self, dim: isize) -> Self {
+    let dim = negative_index(dim, self.rank(), false);
+    if dim == self.rank() - 1 {
+      // Optimize basic case
+      self.max(-1).unsqueeze(-1)
+    } else {
+      self.collapse_only(dim as isize, |t| {
+        let rows: Vec<_> = t.iter(0).collect();
+        Tensor::linearize(&rows, |col| *col.iter().max_by(|a, b|
+          a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+        ).unwrap())
+      })
+    }
+  }
+
   fn look_up(&self, tokens: &Self) -> Self {
     let tokens = tokens.cast();
     tokens.expand(|t| self.at(&[t]).extract() )
@@ -383,5 +398,11 @@ mod tests {
       Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]),
       Tensor::new(&[2,3], vec![7, 8, 9, 10, 11, 12]),
     ]);
+  }
+
+  #[test]
+  fn max_over() {
+    let a = Tensor::arrange(&[3,2,2], 0, 1);
+    assert_eq!(a.max_over(1), Tensor::new(&[3, 1, 2], vec![2, 3, 6, 7, 10, 11]));
   }
 }

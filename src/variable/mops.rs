@@ -93,6 +93,10 @@ impl<T: Real> NumericOps<T> for Variable<T> {
     self.unary_op(Max { dim })
   }
 
+  fn max_over(&self, dim: isize) -> Self {
+    self.unary_op(MaxOver { dim })
+  }
+
   fn look_up(&self, rhs: &Self) -> Self {
     self.binary_op(LookUp, rhs)
   }
@@ -735,6 +739,42 @@ impl<T: Real> UnaryOp<T> for Max {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaxOver {
+  dim: isize,
+}
+
+impl<T: Real> UnaryOp<T> for MaxOver {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.max_over(self.dim)
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let data =
+      lhs.unsqueeze(0).iter(self.dim as isize)
+      .zip(grad.unsqueeze(0).iter(self.dim as isize))
+      .flat_map(|(t, g)| {
+        let rows: Vec<_> = t.iter(0).collect();
+        let argmax = Tensor::linearize(&rows, |col| {
+          col.iter()
+            .enumerate()
+            .max_by(|(_,a), (_,b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
+            .map(|(i, _)| i )
+            .unwrap()
+        });
+        (0..rows.len()).flat_map(move |i| {
+          argmax.param_iter().zip(g.param_iter()).map(|(a, b)|
+            if a == i { b } else { T::zero() }
+          ).collect::<Vec<_>>()
+        })
+      }).collect();
+    Tensor::new(&lhs.shape().dims, data)
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::MaxOver(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReLU;
 
 impl<T: Real> UnaryOp<T> for ReLU {
@@ -782,6 +822,7 @@ pub enum UnaryMops {
   Abs(Abs),
   Min(Min),
   Max(Max),
+  MaxOver(MaxOver),
   ReLU(ReLU),
   Sigmoid(Sigmoid),
 }
@@ -802,6 +843,7 @@ impl UnaryMops {
       Self::Abs(op) => op,
       Self::Min(op) => op,
       Self::Max(op) => op,
+      Self::MaxOver(op) => op,
       Self::ReLU(op) => op,
       Self::Sigmoid(op) => op,
     }

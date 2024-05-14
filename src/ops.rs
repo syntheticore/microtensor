@@ -43,7 +43,7 @@ pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized 
   fn mm(&self, rhs: &Self) -> Self;
   fn min(&self, dim: isize) -> Self;
   fn max(&self, dim: isize) -> Self;
-  fn max_over(&self, _dim: isize) -> Self { todo!() }
+  fn max_over(&self, dim: isize) -> Self;
   fn look_up(&self, rhs: &Self) -> Self;
 }
 
@@ -245,6 +245,14 @@ where
     Self::fill(shape, I::zero())
   }
 
+  fn max_with(&self, rhs: &Self) -> Self {
+    self
+      .broadcast(rhs.shape(), None).unsqueeze(0)
+      .concat(&rhs.broadcast(self.shape(), None).unsqueeze(0), 0)
+      .max_over(0)
+      .squeeze_only(0)
+  }
+
   fn masked(dims: &[usize], source: &Self, cb: impl Fn(&Shape) -> Shape) -> Self {
     let shape = Shape::new(&dims);
     let mask = cb(&shape);
@@ -343,11 +351,6 @@ where
     let max = self.max(dim).extend(self.rank());
     let exp = (self - &max).exp();
     &exp / &exp.sum(dim).extend(exp.rank())
-  }
-
-  fn max_with(&self, rhs: &Self) -> Self {
-    //XXX broadcast
-    self.unsqueeze(0).concat(&rhs.unsqueeze(0), 0).max_over(0).squeeze_only(0)
   }
 
   fn convolve2d(&self, kernels: &Self, step: [usize; 2], bias: Option<&Self>, padding: bool) -> Self {

@@ -93,6 +93,16 @@ impl<T: Inner> Tensor<T> {
     Self::from_shape(shape, data)
   }
 
+  pub fn linearize<O: Inner>(tensors: &[Self], cb: impl Fn(Vec<T>) -> O) -> Tensor<O> {
+    let first = tensors.first().expect("Cannot linearize empty list");
+    let shape = Shape::new(&first.shape.dims);
+    let mut iters: Vec<_> = tensors.iter().map(|t| t.param_iter() ).collect();
+    let data = (0..shape.size()).map(|_| {
+      cb(iters.iter_mut().map(|iter| iter.next().unwrap() ).collect::<Vec<_>>())
+    }).collect();
+    Tensor::from_shape(shape, data)
+  }
+
   pub fn raw(&self) -> RefT<Vec<T>> {
     borrow(&self.data)
   }
@@ -187,9 +197,10 @@ impl<T: Inner> Tensor<T> {
     Tensor::new(&self.shape.dims[..dim], data)
   }
 
-  pub fn collapse_only<F>(&self, dim: isize, cb: F) -> Self
+  pub fn collapse_only<O,F>(&self, dim: isize, cb: F) -> Tensor<O>
   where
-    F: Fn(Self) -> Self,
+    O: Inner,
+    F: Fn(Self) -> Tensor<O>,
   {
     let dim = negative_index(dim, self.shape.rank(), false);
     let data = self.unsqueeze(0).iter(dim as isize)
@@ -424,6 +435,20 @@ impl<T: Numeric> Tensor<T> {
         .map(|(idx, _)| idx )
         .unwrap()
       ).unwrap()
+    })
+  }
+
+  pub fn argmax_over<O: Integer + Unsigned>(&self, dim: isize) -> Tensor<O> {
+    self.collapse_only(dim as isize, |t| {
+      let rows: Vec<_> = t.iter(0).collect();
+      Tensor::linearize(&rows, |col| {
+        let value: usize = col.iter()
+          .enumerate()
+          .max_by(|(_,a), (_,b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
+          .map(|(idx, _)| idx )
+          .unwrap();
+        O::from(value).unwrap()
+      })
     })
   }
 
