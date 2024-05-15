@@ -13,13 +13,15 @@ pub trait Layer<I: Real> {
   fn dense_taped(&self, size: usize, tape_holder: &Self) -> Self;
   fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>) -> (Self, Self) where Self: Sized;
   fn conv2d(&self, out_channels: usize, kernel_shape: [usize; 2], pad: bool) -> Self;
-  fn lstm_cell(&self, hidden: &(Self, Self)) -> (Self, Self) where Self: Sized;
-  fn lstm_block(&self, num_layers: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self where Self: Sized;
-  fn lstm(&self, num_layers: usize, hidden_size: usize, full: bool) -> Self;
   fn layernorm(&self, num_dims: usize, scale: bool) -> Self;
   fn dropout(&self, probability: I, train: bool) -> Self;
   fn embed(&self, vocab_len: usize, embed_dim: usize) -> Self;
   fn embed_shared(&self, vocab_len: usize, embed_dim: usize, downscale: bool) -> (Self, Self) where Self: Sized;
+  fn attention(&self, key: &Self, value: &Self, head_dim: usize, mask: &Self) -> Self;
+  fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self;
+  fn lstm(&self, num_layers: usize, hidden_size: usize, full: bool) -> Self;
+  fn lstm_block(&self, num_layers: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self where Self: Sized;
+  fn lstm_cell(&self, hidden: &(Self, Self)) -> (Self, Self) where Self: Sized;
 }
 
 impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
@@ -91,6 +93,37 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
       Tensor::randn(&[vocab_len, embed_dim]) * gain
     });
     (table.look_up(self), table)
+  }
+
+  fn attention(&self, key: &Self, value: &Self, head_dim: usize, mask: &Self) -> Self {
+    let scale = I::one() / (I::from(head_dim).unwrap()).sqrt();
+    let scores = self.mm(&key.transpose(-2, -1)) * scale;
+    (scores + mask)
+      .softmax(-1)
+      .mm(value)
+  }
+
+  fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self {
+    let dim_model = self.dim(-1);
+    let head_dim = dim_model / num_heads;
+
+    let transpose = |seq: &Self| {
+      seq
+      .dense(seq.dim(-1))
+      .reshape_keep(&[-1, 0, num_heads as isize, head_dim as isize])
+      .transpose(1,2)
+    };
+
+    let query = transpose(self);
+    let key   = transpose(key_value);
+    let value = transpose(key_value);
+
+    let scores = query.attention(&key, &value, head_dim, mask);
+    let concat = scores
+      .transpose(1,2)
+      .reshape_keep(&[-1, 0, dim_model as isize]);
+
+    concat.dense(dim_model)
   }
 
   fn lstm(&self, num_layers: usize, hidden_size: usize, full: bool) -> Self {
