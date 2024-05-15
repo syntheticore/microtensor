@@ -158,8 +158,9 @@ impl<T: Inner> Tensor<T> {
     O: Inner,
     F: Fn((T, T)) -> O,
   {
+    let lhs = self.broadcast(&rhs.shape, None);
     let rhs = rhs.broadcast(&self.shape, None);
-    let data: Vec<O> = self.broadcast(&rhs.shape, None).param_iter()
+    let data: Vec<O> = lhs.param_iter()
       .zip(rhs.param_iter())
       .map(cb)
       .collect();

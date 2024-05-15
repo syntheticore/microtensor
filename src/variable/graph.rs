@@ -160,13 +160,11 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
   }
 
   fn history(&self) -> Vec<RcT<Node<T>>> {
-    let mut history = self.outputs
+    self.outputs
       .iter()
-      .map(|out| out.history() )
-      .collect::<Vec<_>>()
-      .concat();
-    history.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap() );
-    history.into_iter().unique_by(|a| a.id ).collect()
+      .flat_map(|out| out.history() )
+      .unique_by(|n| n.id )
+      .collect()
   }
 
   pub fn serialize(&self) -> Vec<u8> {
