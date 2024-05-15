@@ -17,7 +17,7 @@ use crate::{
   shape::{ Shape, DimensionIterator },
   variable::{ Variable, Traintape },
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
-  ops::{ BaseOps, NumericOps, BaseHops, NumericHops, RealHops },
+  ops::{ BaseOps, NumericOps, RealOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -534,6 +534,18 @@ impl<T: Real> Tensor<T> {
   pub fn linspace(shape: &[usize], start: T, end: T) -> Self {
     let size = T::from(shape.iter().product::<usize>()).unwrap();
     Self::arrange(shape, start, (end - start) / (size - T::one()))
+  }
+
+  pub fn sine_encoding(seq_len: usize, dim_model: usize, max_wavelength: Option<T>) -> Self {
+    let half_dim = dim_model / 2;
+    let max_wavelength = max_wavelength.unwrap_or(T::from(10_000.0).unwrap());
+    let positions = Self::arrange(&[seq_len, 1], T::zero(), T::one());
+    let depths = Self::arrange(&[1, half_dim], T::zero(), T::one()) / T::from(half_dim).unwrap();
+    let angle_rates = Self::scalar(T::one()) / Self::scalar(max_wavelength).pow(&depths);
+    let rads = positions * angle_rates;
+    rads.sin().unsqueeze(-1)
+      .concat(&rads.cos().unsqueeze(-1), -1)
+      .reshape(&[seq_len, dim_model])
   }
 
   pub fn bernoulli<O: Numeric>(&self) -> Tensor<O> {
