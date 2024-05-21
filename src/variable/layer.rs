@@ -17,11 +17,10 @@ pub trait Layer<I: Real> {
   fn dropout(&self, probability: I, train: bool) -> Self;
   fn embed(&self, vocab_len: usize, embed_dim: usize) -> Self;
   fn embed_shared(&self, vocab_len: usize, embed_dim: usize, downscale: bool) -> (Self, Self) where Self: Sized;
-  fn attention(&self, key: &Self, value: &Self, head_dim: usize, mask: &Self) -> Self;
   fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self;
-  fn lstm(&self, num_layers: usize, hidden_size: usize, full: bool) -> Self;
-  fn lstm_block(&self, num_layers: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self where Self: Sized;
-  fn lstm_cell(&self, hidden: &(Self, Self)) -> (Self, Self) where Self: Sized;
+  fn lstm(&self, num_layers: usize, hidden_size: usize, output_size: usize, full: bool) -> Self;
+  fn lstm_block(&self, num_layers: usize, hidden_size: usize, output_size: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self where Self: Sized;
+  fn lstm_cell(&self, hidden_size: usize, hidden: &(Self, Self)) -> (Self, Self) where Self: Sized;
 }
 
 impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
@@ -95,14 +94,6 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     (table.look_up(self), table)
   }
 
-  fn attention(&self, key: &Self, value: &Self, head_dim: usize, mask: &Self) -> Self {
-    let scale = I::one() / (I::from(head_dim).unwrap()).sqrt();
-    let scores = self.mm(&key.transpose(-2, -1)) * scale;
-    (scores + mask)
-      .softmax(-1)
-      .mm(value)
-  }
-
   fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self {
     let dim_model = self.dim(-1);
     let head_dim = dim_model / num_heads;
@@ -126,16 +117,17 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     concat.dense(dim_model)
   }
 
-  fn lstm(&self, num_layers: usize, hidden_size: usize, full: bool) -> Self {
-    let dims = [&self.shape()[0..-3], &[hidden_size]].concat();
-    let zeros = Tensor::zeros(&dims).tracked();
-    let hidden = Arc::new(RwLock::new((0..num_layers).map(|_|
+  fn lstm(&self, num_layers: usize, hidden_size: usize, output_size: usize, full: bool) -> Self {
+    let hidden = Arc::new(RwLock::new((0..num_layers).map(|l| {
+      let size = if l == num_layers - 1 { output_size } else { hidden_size };
+      let dims = [&self.shape()[0..-3], &[size]].concat();
+      let zeros = Tensor::zeros(&dims).tracked();
       (zeros.clone(), zeros.clone())
-    ).collect()));
+    }).collect()));
 
     let block = Module::continued(self, move |inputs| vec![
       inputs[0]
-      .lstm_block(num_layers, hidden.clone())
+      .lstm_block(num_layers, hidden_size, output_size, hidden.clone())
     ]);
 
     let output: Vec<_> = (0..self.dim(1)).map(|t| {
@@ -152,19 +144,20 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     }
   }
 
-  fn lstm_block(&self, num_layers: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self {
+  fn lstm_block(&self, num_layers: usize, hidden_size: usize, output_size: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self {
     let mut hidden = hidden.write();
-    hidden[0] = self.lstm_cell(&hidden[0]);
-    for l in 1..num_layers {
-      hidden[l] = hidden[l - 1].0.lstm_cell(&hidden[l]);
+    for l in 0..num_layers {
+      let prev = if l == 0 { self } else { &hidden[l - 1].0 };
+      let size = if l == num_layers - 1 { output_size } else { hidden_size };
+      hidden[l] = prev.lstm_cell(size, &hidden[l]);
     }
     hidden.last().unwrap().0.clone()
   }
 
-  fn lstm_cell(&self, state: &(Self, Self)) -> (Self, Self) {
+  fn lstm_cell(&self, hidden_size: usize, state: &(Self, Self)) -> (Self, Self) {
     let (hx, cx) = state;
 
-    let size = hx.dim(-1) * 4;
+    let size = hidden_size * 4;
     let gates = self.dense(size) + hx.dense_taped(size, self);
     let [input_gate, forget_gate, cell_input, output_gate] = gates.chunks(4, -1).try_into().unwrap();
 

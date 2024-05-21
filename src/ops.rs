@@ -390,6 +390,14 @@ where
     conv.reshape(&[padded.dim(0), kernels.dim(0), out_width, out_height])
   }
 
+  fn attention(&self, key: &Self, value: &Self, head_dim: usize, mask: &Self) -> Self {
+    let scale = I::one() / I::from(head_dim).unwrap().sqrt();
+    let scores = self.mm(&key.transpose(-2, -1)) * scale;
+    (&scores + mask)
+      .softmax(-1)
+      .mm(value)
+  }
+
   fn cross_entropy(&self, other: &Self) -> Self {
     let this = self + I::from(1e-9).unwrap();
     (&this.log() * other).sum(-1) * (-I::one())
