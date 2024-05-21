@@ -37,21 +37,23 @@ fn build_model(filename: &str) {
 fn load_model(filename: &str) {
   let mut graph = Graph::load(filename).unwrap();
 
-  // Feed new data using #run_all.
+  // Feed & update manually
+  graph.inputs[0].assign(&Tensor::vec(&[5.0, 6.0]));
+  graph.outputs[0].forward();
+  let _y = &graph.outputs[0];
+
+  // Or use Graph::run to do the same
+  let _z = graph.run(1, &[&Tensor::vec(&[5.0, 6.0]), &Tensor::randn(&[16])]);
+
+  // Use Graph::run_all if you need all outputs recalculated at once.
   // Updating the entire graph in this way is more efficient
-  // than calling #forward on each individual output.
+  // than calling ::forward on each individual output.
+
   graph.run_all(&[
     &Tensor::vec(&[5.0, 6.0]),
     &Tensor::randn(&[16]),
   ]);
 
-  // Get new output..
-  let z = &graph.outputs[1];
-  println!("z is now {}", z.item());
-
-  // ..or train the model further
-  z.backward();
-  for mut param in z.parameters() {
-    param -= param.grad().unwrap() * 0.01
-  }
+  let _y = &graph.outputs[0];
+  let _z = &graph.outputs[1];
 }
