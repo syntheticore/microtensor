@@ -218,6 +218,13 @@ pub trait BaseHops<I: Inner>: BaseOps<I> {
     self.layout(|shap| shap.windows(shape, step) )
   }
 
+  fn repeat(&self, count: usize, dim: isize) -> Self {
+    let dim = negative_index(dim, self.rank(), false);
+    let mut dims = vec![1; self.rank() + 1];
+    dims[dim] = count;
+    self.unsqueeze(dim as isize).broadcast(&Shape::new(&dims), None)
+  }
+
   // fn transpose_vec(&self, extend_front: bool) -> Self {
   //   let mut this = self.clone();
   //   if self.rank() == 1 {

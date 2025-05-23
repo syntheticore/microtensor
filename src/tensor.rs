@@ -240,7 +240,7 @@ impl<T: Inner> Tensor<T> {
     let dim = negative_index(dim, self.shape.rank(), false);
     let mut dims = None;
     let data = self.iter(dim as isize)
-      .map(|t| cb(t) )
+      .map(cb)
       .inspect(|t| {
         debug_assert!(dims.is_none() || &t.shape.dims == dims.as_ref().unwrap(),
           "Map must produce tensors of equal dimensions");
@@ -493,7 +493,7 @@ impl<T: Numeric> std::ops::DivAssign for Tensor<T> {
 
 impl<T: Numeric> std::iter::Sum for Tensor<T> {
   fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
-    iter.fold(Self::zeros(&[1]), |acc, a| a.add(&acc) )
+    iter.fold(Self::zeros(&[1]), |acc, a| a + acc )
   }
 }
 
@@ -786,16 +786,16 @@ mod tests {
     let x = Tensor::new(&[1,2,3], vec![1, 2, 3, 4, 5, 6]);
 
     let y = Tensor::new(&[    1], vec![1]);
-    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 3, 4, 5, 6, 7]));
+    assert_eq!(&x + y, Tensor::new(&[1,2,3], vec![2, 3, 4, 5, 6, 7]));
 
     let y = Tensor::new(&[    3], vec![1, 2, 3]);
-    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 4, 6, 5, 7, 9]));
+    assert_eq!(&x + y, Tensor::new(&[1,2,3], vec![2, 4, 6, 5, 7, 9]));
 
     let y = Tensor::new(&[  2,3], vec![1, 2, 3, 4, 5, 6]);
-    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 4, 6, 8, 10, 12]));
+    assert_eq!(&x + y, Tensor::new(&[1,2,3], vec![2, 4, 6, 8, 10, 12]));
 
     let y = Tensor::new(&[  2,1], vec![1, 2]);
-    assert_eq!(x.add(&y), Tensor::new(&[1,2,3], vec![2, 3, 4, 6, 7, 8]));
+    assert_eq!(&x + y, Tensor::new(&[1,2,3], vec![2, 3, 4, 6, 7, 8]));
   }
 
   #[test]

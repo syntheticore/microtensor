@@ -12,8 +12,8 @@ fn mlp(input: &Variable<f32>) -> Variable<f32> {
 }
 
 fn main() {
-  // Use the #simple contructor for modules with a single input/output
-  let mut model = Module::simple(|input| mlp(&input) );
+  // Use the ::simple contructor for modules with a single input/output
+  let mut model = Module::simple(mlp);
 
   // --- Insert real data here ---
   let input = Tensor::ones(&[32, 28 * 28]);
@@ -23,5 +23,5 @@ fn main() {
   let pred = model.run_traced(0, &[&input]); // Or use ::run to run in eager mode
 
   // Module output is further differentiable
-  let _loss = (pred - labels.tracked()).sqr().mean(0);
+  let _loss = pred.mse(&labels.tracked());
 }
