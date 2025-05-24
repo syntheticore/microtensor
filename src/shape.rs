@@ -441,8 +441,8 @@ impl<'a> Iterator for SwitchIterator<'a>
   #[inline]
   fn next(&mut self) -> Option<Self::Item> {
     match self {
-      SwitchIterator::Contiguous(l) => l.next(),
-      SwitchIterator::Strided(r) => r.next(),
+      SwitchIterator::Contiguous(c) => c.next(),
+      SwitchIterator::Strided(s) => s.next(),
     }
   }
 }

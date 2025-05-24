@@ -8,7 +8,7 @@ mod mops;
 mod graph;
 mod layer;
 
-pub use graph::{ Graph, Module };
+pub use graph::{ Graph, Module, MultiModule };
 pub use layer::Layer;
 
 use crate::{
@@ -232,8 +232,10 @@ impl<T: Real> Variable<T> {
   }
 
   fn operation(op: Op, data: Tensor<T>, grad: bool, previous: Vec<RcT<Node<T>>>) -> Self {
-    let traintape = previous.iter()
-      .find(|prev| prev.traintape.is_some() )
+    // For MultiModules to work, trained vars need to retain their original traintapes, while inputs get
+    // fresh ones for every copied version of a model. We need to pick one of those.
+    let traintape: Option<RcCell<Traintape<T>>> = previous.iter()
+      .find(|prev| prev.traintape.is_some() && !prev.trainable )
       .and_then(|node| node.traintape.clone() );
     Self {
       node: RcT::new(Node {
@@ -433,6 +435,12 @@ impl<T: Real> std::ops::MulAssign<Tensor<T>> for Variable<T> {
 impl<T: Real> std::ops::DivAssign<Tensor<T>> for Variable<T> {
   fn div_assign(&mut self, rhs: Tensor<T>) {
     self.op_assign(&rhs, |a, b| *a /= b );
+  }
+}
+
+impl<T: Real> std::iter::Sum for Variable<T> {
+  fn sum<I: Iterator<Item = Self>>(iter: I) -> Self where I: Iterator {
+    iter.fold(Self::zeros(&[1]), |acc, a| a + acc )
   }
 }
 

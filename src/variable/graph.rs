@@ -1,5 +1,6 @@
 use std::io;
 use std::fs;
+use std::thread;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
@@ -29,16 +30,27 @@ impl<T: Real> std::fmt::Debug for dyn Tracer<T> {
 #[derive(Debug)]
 pub struct Module<T: Real + 'static> {
   pub graph: Graph<T>,
-  tracer: Box<dyn Tracer<T>>,
+  tracer: RcT<dyn Tracer<T>>,
   start_count: usize,
   traintape: RcCell<Traintape<T>>,
+}
+
+impl<T: Real> Clone for Module<T> {
+  fn clone(&self) -> Self {
+    Self {
+      graph: Graph { inputs: vec![], outputs: vec![] },
+      tracer: self.tracer.clone(),
+      start_count: self.start_count,
+      traintape: make_rc_cell((*borrow(&self.traintape)).clone()),
+    }
+  }
 }
 
 impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
   pub fn new(tracer: impl Tracer<T>) -> Self {
     Self {
       graph: Graph { inputs: vec![], outputs: vec![] },
-      tracer: Box::new(tracer),
+      tracer: RcT::new(tracer),
       start_count: 0,
       traintape: make_rc_cell(Traintape { tape: vec![], counter: 0 }),
     }
@@ -48,12 +60,16 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
     Self::new(move |inputs| vec![(tracer)(&inputs[0])] )
   }
 
+  /// Sub-modules are usefull for applying layers repeatedly from within another
+  /// enclosing Module. They need to be initialized with an arbitrary [Variable]
+  /// that was generated from previous Module inputs.
+
   pub fn continued(tape_holder: &Variable<T>, tracer: impl Tracer<T>) -> Self {
     let tape = tape_holder.node.traintape.as_ref()
       .expect("Cannot continue Module from a Variable that wasn't generated from Module inputs");
     Self {
       graph: Graph { inputs: vec![], outputs: vec![] },
-      tracer: Box::new(tracer),
+      tracer: RcT::new(tracer),
       start_count: borrow(tape).counter,
       traintape: tape.clone(),
     }
@@ -119,6 +135,67 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Module<T> {
     }).collect();
     let dump = postcard::to_allocvec(&*traintape).unwrap();
     fs::write(filename, dump)
+  }
+
+  pub fn multi(self, count: usize) -> MultiModule<T> {
+    MultiModule {
+      count,
+      base_module: self,
+    }
+  }
+}
+
+
+#[derive(Debug)]
+pub struct MultiModule<T: Real> {
+  base_module: Module<T>,
+  count: usize,
+}
+
+impl<T: Real + Serialize + DeserializeOwned> MultiModule<T> {
+  pub fn run(&self, output: usize, inputs: &[&Tensor<T>]) -> Variable<T> {
+    // Only chunk if batch size permits it
+    if output != 1 || inputs[0].dim(0) < self.count { return self.base_module.run(output, inputs) }
+
+    // Chunk all inputs
+    let inputs: Vec<Vec<_>> = inputs.into_iter().map(|input| input.chunks(self.count, 0) ).collect();
+
+    // Make sure traintape gets filled on first run, before being copied
+    if borrow(&self.base_module.traintape).tape.len() == 0 {
+      let chunks = inputs.iter().map(|input| &input[0] ).collect::<Vec<_>>();
+      return self.base_module.run(output, &chunks);
+    }
+
+    // Run multiple threads, each processing a chunk of the entire batch
+    let out: Vec<Variable<T>> = thread::scope(|s| {
+      (0..self.count)
+        .map(|i| {
+          let inputs = &inputs;
+          s.spawn(move || {
+            // Run a clone of the model with its own traintape counter & graph
+            let module = self.base_module.clone();
+            let result = module.run(output, &inputs.iter().map(|input| &input[i] ).collect::<Vec<_>>());
+            // The generated graphs share only their trained variables (which are leaf nodes),
+            // so gradient updates will accumulate in those naturally
+            result.backward();
+            result
+          })
+        }).collect::<Vec<_>>().into_iter()
+        .map(|h| h.join().unwrap() )
+        .collect()
+    });
+
+    // Return average loss of all runs
+    let len = T::from(out.len()).unwrap();
+    out.into_iter().sum::<Variable<T>>() / len
+  }
+
+  pub fn load(&mut self, filename: &str) -> io::Result<()> {
+    self.base_module.load(filename)
+  }
+
+  pub fn save(&self, filename: &str) -> io::Result<()> {
+    self.base_module.save(filename)
   }
 }
 
