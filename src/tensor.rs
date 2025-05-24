@@ -14,7 +14,7 @@ mod lops;
 
 use crate::{
   internal::*,
-  shape::{ Shape, DimensionIterator },
+  shape::{ Shape, DimensionIterator, SwitchIterator },
   variable::{ Variable, Traintape },
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
   ops::{ BaseOps, NumericOps, RealOps, BaseHops, NumericHops, RealHops },
@@ -732,11 +732,11 @@ impl<T: Inner> Iterator for TensorSliceIterator<'_, T> {
 
 pub struct TensorIterator<'a, T: Inner> {
   data: RefT<'a, Vec<T>>,
-  shape_iter: Box<dyn Iterator<Item=usize> + 'a>,
+  shape_iter: SwitchIterator<'a>,
 }
 
 impl<'a, T: Inner> TensorIterator<'a, T> {
-  fn new(tensor: &'a Tensor<T>) -> Self {
+  pub fn new(tensor: &'a Tensor<T>) -> Self {
     Self {
       data: tensor.raw(),
       shape_iter: tensor.shape.iter(),
@@ -748,7 +748,7 @@ impl<T: Inner> Iterator for TensorIterator<'_, T> {
   type Item = T;
 
   fn next(&mut self) -> Option<Self::Item> {
-    self.shape_iter.next().and_then(|i| Some(self.data[i].clone()) )
+    self.shape_iter.next().map(|i| self.data[i].clone())
   }
 }
 

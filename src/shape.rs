@@ -112,11 +112,11 @@ impl Shape {
   //   todo!()
   // }
 
-  pub fn iter(&self) -> Box<dyn Iterator<Item=usize> + '_> {
+  pub fn iter(&self) -> SwitchIterator {
     if self.contiguous() {
-      Box::new(self.offset..self.offset + self.size())
+      SwitchIterator::Contiguous(self.offset..self.offset + self.size())
     } else {
-      Box::new(ShapeIterator::new(self))
+      SwitchIterator::Strided(ShapeIterator::new(self))
     }
   }
 
@@ -347,17 +347,17 @@ impl std::fmt::Display for Shape {
 pub struct ShapeIterator<'a> {
   shape: &'a Shape,
   counter: Vec<usize>,
-  idx: isize,
-  finished: bool,
+  index: isize,
+  done: bool,
 }
 
 impl<'a> ShapeIterator<'a> {
-  fn new(shape: &'a Shape) -> Self {
+  pub fn new(shape: &'a Shape) -> Self {
     Self {
-      counter: vec![0; shape.rank()],
-      idx: shape.offset as isize,
       shape,
-      finished: false,
+      counter: vec![0; shape.rank()],
+      index: shape.offset as isize,
+      done: shape.size() == 0,
     }
   }
 }
@@ -366,29 +366,26 @@ impl<'a> Iterator for ShapeIterator<'a> {
   type Item = usize;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if self.finished { return None }
-    let out = self.idx as usize;
-    let len = self.counter.len();
-    // Walk backward through dimensions
-    for cd in (0..len).rev() {
-      // Increment counter on full turn of right hand dimension
-      if cd == len - 1 || self.counter[cd + 1] == 0 {
-        let count = &mut self.counter[cd];
-        // Full turn?
-        if *count == self.shape.dims[cd] - 1 {
-          if cd == 0 { self.finished = true; break }
-          *count = 0;
-          let backstride = (self.shape.dims[cd] as isize - 1) * self.shape.strides[cd];
-          self.idx -= backstride;
-        } else {
-          *count += 1;
-          self.idx += self.shape.strides[cd];
-        }
+    if self.done { return None }
+
+    let current = self.index as usize;
+
+    // Advance counter
+    for i in (0..self.counter.len()).rev() {
+      self.counter[i] += 1;
+      self.index += self.shape.strides[i];
+
+      if self.counter[i] < self.shape.dims[i] {
+        break;
+
       } else {
-        break
+        // Reset and backtrack
+        self.index -= self.counter[i] as isize * self.shape.strides[i];
+        self.counter[i] = 0;
+        if i == 0 { self.done = true }
       }
     }
-    Some(out)
+    Some(current)
   }
 }
 
@@ -428,6 +425,25 @@ impl Iterator for DimensionIterator {
       .collect();
     self.idx += 1;
     Some(dims)
+  }
+}
+
+
+pub enum SwitchIterator<'a> {
+  Contiguous(Range<usize>),
+  Strided(ShapeIterator<'a>),
+}
+
+impl<'a> Iterator for SwitchIterator<'a>
+{
+  type Item = usize;
+
+  #[inline]
+  fn next(&mut self) -> Option<Self::Item> {
+    match self {
+      SwitchIterator::Contiguous(l) => l.next(),
+      SwitchIterator::Strided(r) => r.next(),
+    }
   }
 }
 
