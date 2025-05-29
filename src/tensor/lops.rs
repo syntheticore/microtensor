@@ -146,6 +146,8 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let lhs = lhs.broadcast(&rhs.shape, Some(-2));
     let rhs = rhs.broadcast(&lhs.shape, Some(-2));
 
+    assert_eq!(lhs.shape[-1], rhs.shape[-2], "Cannot matrix multiply {} Tensor by {} Tensor", lhs.shape(), rhs.shape());
+
     // Batched multiplication
     let iter = lhs.iter(-3).zip(rhs.iter(-3));
 

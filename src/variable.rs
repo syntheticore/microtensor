@@ -1,8 +1,9 @@
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{ Mutex, OnceLock };
+use std::sync::atomic::{ AtomicUsize, Ordering };
 use std::fmt::Debug;
 
-use serde::{Serialize, Deserialize};
+use serde::{ Serialize, Deserialize };
 
 mod mops;
 mod graph;
@@ -23,6 +24,21 @@ pub static LAST_ID: AtomicUsize = AtomicUsize::new(0);
 
 pub fn make_id() -> usize {
   LAST_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+
+static AUTOGRAD: OnceLock<Mutex<bool>> = OnceLock::new();
+
+fn autograd_mutex() -> &'static Mutex<bool> {
+  AUTOGRAD.get_or_init(|| Mutex::new(true))
+}
+
+pub fn enable_autograd(val: bool) {
+  *autograd_mutex().lock().unwrap() = val;
+}
+
+pub fn autograd() -> bool {
+  *autograd_mutex().lock().unwrap()
 }
 
 
@@ -245,7 +261,7 @@ impl<T: Real> Variable<T> {
           data,
         },
         op: Some(op),
-        previous,
+        previous: if autograd() { previous } else { vec![] },
         trainable: false,
         traintape,
       }),
