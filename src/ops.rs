@@ -38,7 +38,7 @@ pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
 /// for non-differentiable [Numeric] inner types.
 
 pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized {
-  fn sum(&self, dim: isize) -> Self;
+  fn sum(&self, dim: isize) -> Self; //XXX keep_dim option
   // sum_over or generic form of sum etc., like sum(&[1,2])
   fn mm(&self, rhs: &Self) -> Self;
   fn min(&self, dim: isize) -> Self;
@@ -344,6 +344,10 @@ where
   fn variance(&self, dim: isize) -> Self {
     let mean = self.mean(dim).extend(self.rank());
     (self - &mean).sqr().mean(dim)
+  }
+
+  fn clamp_min(&self, min: I) -> Self {
+    self.max_with(&Self::scalar(min))
   }
 
   fn swish(&self, beta: &Self) -> Self {
