@@ -11,7 +11,7 @@ pub trait Layer<I: Real> {
   fn dense(&self, size: usize) -> Self;
   fn dense_shared(&self, size: usize, weights: Option<Self>) -> (Self, Self) where Self: Sized;
   fn dense_taped(&self, size: usize, tape_holder: &Self) -> Self;
-  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>) -> (Self, Self) where Self: Sized;
+  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) where Self: Sized;
   fn conv2d(&self, out_channels: usize, kernel_shape: [usize; 2], pad: bool) -> Self;
   fn layernorm(&self, num_dims: usize, scale: bool) -> Self;
   fn dropout(&self, probability: I, train: bool) -> Self;
@@ -35,20 +35,20 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
   }
 
   fn dense_shared(&self, size: usize, weights: Option<Self>) -> (Self, Self) {
-    self.dense_shared_taped(size, weights, None)
+    self.dense_shared_taped(size, weights, None, I::zero())
   }
 
   fn dense_taped(&self, size: usize, tape_holder: &Self) -> Self {
-    self.dense_shared_taped(size, None, Some(tape_holder)).0
+    self.dense_shared_taped(size, None, Some(tape_holder), I::zero()).0
   }
 
-  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>) -> (Self, Self) {
+  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) {
     let tape_holder = tape_holder.or_else(|| Some(self) ).unwrap();
     let weights = weights.or_else(|| Some(tape_holder.retrained(|| {
       let dims = [self.dim(-1), size];
       Tensor::glorot_uniform(&dims)
     }))).unwrap();
-    let bias = tape_holder.retrained(|| Tensor::zeros(&[size]) );
+    let bias = tape_holder.retrained(|| Tensor::fill(&[size], bias_init) );
     (self.mm(&weights) + bias, weights)
   }
 
