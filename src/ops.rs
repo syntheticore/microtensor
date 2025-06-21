@@ -2,9 +2,11 @@ use std::ops::Range;
 
 use num_traits::NumOps;
 
-use crate::internal::*;
-use crate::Shape;
-use crate::scalar::{ Inner, Numeric, Signed, Real };
+use crate::{
+  internal::*,
+  Shape,
+  scalar::{ Inner, Numeric, Signed, Real },
+};
 
 
 /// Low-level compute operations.
@@ -43,6 +45,7 @@ pub trait NumericOps<I: Numeric>: BaseOps<I> + NumOps + NumOps<I, Self> + Sized 
   fn mm(&self, rhs: &Self) -> Self;
   fn min(&self, dim: isize) -> Self;
   fn max(&self, dim: isize) -> Self;
+  fn min_over(&self, dim: isize) -> Self;
   fn max_over(&self, dim: isize) -> Self;
   fn look_up(&self, rhs: &Self) -> Self;
 }
@@ -250,6 +253,18 @@ where
 
   fn zeros(shape: &[usize]) -> Self {
     Self::fill(shape, I::zero())
+  }
+
+  fn zeros_like(other: &Self) -> Self {
+    Self::zeros(&other.shape().dims)
+  }
+
+  fn min_with(&self, rhs: &Self) -> Self {
+    self
+      .broadcast(rhs.shape(), None).unsqueeze(0)
+      .concat(&rhs.broadcast(self.shape(), None).unsqueeze(0), 0)
+      .min_over(0)
+      .squeeze_only(0)
   }
 
   fn max_with(&self, rhs: &Self) -> Self {
@@ -462,5 +477,12 @@ mod tests {
       Tensor::arrange(&[3,2], 3, 1),
     ], 0);
     assert_eq!(a, Tensor::new(&[4,2], vec![1, 2, 3, 4, 5, 6, 7, 8]));
+  }
+
+  #[test]
+  fn max_with() {
+    let a = Tensor::arrange(&[3,2,2], 0, 1);
+    let b = Tensor::arrange(&[3,1,2], 13, 1);
+    assert_eq!(a.max_with(&b), Tensor::new(&[3, 2, 2], vec![13, 14, 13, 14, 15, 16, 15, 16, 17, 18, 17, 18]));
   }
 }

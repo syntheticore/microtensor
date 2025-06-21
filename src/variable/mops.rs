@@ -93,6 +93,10 @@ impl<T: Real> NumericOps<T> for Variable<T> {
     self.unary_op(Max { dim })
   }
 
+  fn min_over(&self, dim: isize) -> Self {
+    self.unary_op(MinOver { dim })
+  }
+
   fn max_over(&self, dim: isize) -> Self {
     self.unary_op(MaxOver { dim })
   }
@@ -355,8 +359,20 @@ impl<T: Real> BinaryOp<T> for MatMul {
 
   fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
   {
+    let mut grad = grad.clone();
+
+    if grad.rank() == 1 {
+      if lhs.rank() == 1 {
+        // vector × matrix
+        grad = grad.unsqueeze(0);
+      } else if rhs.rank() == 1 {
+        // matrix × vector
+        grad = grad.unsqueeze(-1);
+      }
+    }
+
     let mut grad_l = grad.mm(&rhs.transpose_vec(false));
-    let mut grad_r = lhs.transpose_vec(true).mm(grad);
+    let mut grad_r = lhs.transpose_vec(true).mm(&grad);
 
     let rank_l = lhs.rank();
     let rank_r = rhs.rank();
@@ -739,6 +755,42 @@ impl<T: Real> UnaryOp<T> for Max {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinOver {
+  dim: isize,
+}
+
+impl<T: Real> UnaryOp<T> for MinOver {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.min_over(self.dim)
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let data =
+      lhs.unsqueeze(0).iter(self.dim as isize)
+      .zip(grad.unsqueeze(0).iter(self.dim as isize))
+      .flat_map(|(t, g)| {
+        let rows: Vec<_> = t.iter(0).collect();
+        let argmin = Tensor::linearize(&rows, |col| {
+          col.iter()
+            .enumerate()
+            .min_by(|(_,a), (_,b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
+            .map(|(i, _)| i )
+            .unwrap()
+        });
+        (0..rows.len()).flat_map(move |i| {
+          argmin.param_iter().zip(g.param_iter()).map(|(a, b)|
+            if a == i { b } else { T::zero() }
+          ).collect::<Vec<_>>()
+        })
+      }).collect();
+    Tensor::new(&lhs.shape().dims, data)
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::MinOver(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaxOver {
   dim: isize,
 }
@@ -822,6 +874,7 @@ pub enum UnaryMops {
   Abs(Abs),
   Min(Min),
   Max(Max),
+  MinOver(MinOver),
   MaxOver(MaxOver),
   ReLU(ReLU),
   Sigmoid(Sigmoid),
@@ -843,6 +896,7 @@ impl UnaryMops {
       Self::Abs(op) => op,
       Self::Min(op) => op,
       Self::Max(op) => op,
+      Self::MinOver(op) => op,
       Self::MaxOver(op) => op,
       Self::ReLU(op) => op,
       Self::Sigmoid(op) => op,
@@ -889,5 +943,57 @@ impl MultiMops {
     match self {
       Self::Stack(op) => op,
     }
+  }
+}
+
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn mm_gradient() {
+    // 1. Matrix × Matrix
+    let err_mat_mat = Variable::check_gradients(&[2, 3], |x| {
+      let y = Tensor::new(&[3, 4], vec![
+        0.1, 0.2, 0.3, 0.4,
+        0.5, 0.6, 0.7, 0.8,
+        0.9, 1.0, 1.1, 1.2,
+      ]).tracked();
+      x.mm(&y)
+    });
+    assert!(err_mat_mat < 1e-2);
+
+    // 2. Matrix × Vector
+    let err_mat_vec = Variable::check_gradients(&[2, 3], |x| {
+      let y = Tensor::new(&[3], vec![1.0, 2.0, 3.0]).tracked();
+      x.mm(&y)
+    });
+    assert!(err_mat_vec < 1e-2);
+
+    // 3. Vector × Matrix
+    let err_vec_mat = Variable::check_gradients(&[3], |x| {
+      let y = Tensor::new(&[3, 2], vec![
+        1.0, 2.0,
+        3.0, 4.0,
+        5.0, 6.0,
+      ]).tracked();
+      x.mm(&y)
+    });
+    assert!(err_vec_mat < 1e-2);
+
+    // 4. Batched Matrix × Broadcasted Matrix
+    let err_batched = Variable::check_gradients(&[2, 2, 3], |x| {
+      let y = Tensor::new(&[3, 1], vec![1.0, 2.0, 3.0]).tracked();
+      x.mm(&y)
+    });
+    assert!(err_batched < 1e-2);
+
+    // 5. Batched Matrix × Vector (vector broadcasted across batch)
+    let err_batched_vec = Variable::check_gradients(&[2, 3], |x| {
+      let y = Tensor::new(&[3], vec![1.0, 2.0, 3.0]).tracked();
+      x.mm(&y)
+    });
+    assert!(err_batched_vec < 1e-2);
   }
 }

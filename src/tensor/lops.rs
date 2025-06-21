@@ -131,8 +131,8 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
       lhs = lhs.unsqueeze(0);
     }
     if pad_r {
-      // rhs = rhs.unsqueeze(-1);
-      rhs = rhs.unsqueeze(0);
+      rhs = rhs.unsqueeze(-1);
+      // rhs = rhs.unsqueeze(0);
     }
 
     // Extend with batch dimension
@@ -186,8 +186,10 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
 
     let n = lhs.rank() - 2;
     let start = if no_batch { 1 } else { 0 };
-    let dims = lhs.shape.dims[start..n].to_vec();
-    let dims = [dims, last_dims].concat();
+    let mut dims = lhs.shape.dims[start..n].to_vec();
+    dims.extend(last_dims);
+
+    if pad_r && dims.last() == Some(&1) { dims.pop(); }
 
     Self::new(&dims, data)
   }
@@ -206,6 +208,21 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) )
         .unwrap()
     })
+  }
+
+  fn min_over(&self, dim: isize) -> Self {
+    let dim = negative_index(dim, self.rank(), false);
+    if dim == self.rank() - 1 {
+      // Optimize basic case
+      self.min(-1).unsqueeze(-1)
+    } else {
+      self.collapse_only(dim as isize, |t| {
+        let rows: Vec<_> = t.iter(0).collect();
+        Tensor::linearize(&rows, |col| *col.iter().min_by(|a, b|
+          a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+        ).unwrap())
+      })
+    }
   }
 
   fn max_over(&self, dim: isize) -> Self {
@@ -384,6 +401,87 @@ mod tests {
   }
 
   #[test]
+  fn mm() {
+    let x = Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]);
+    let y = Tensor::new(&[3,2], vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(x.mm(&y), Tensor::new(&[2,2], vec![22, 28, 49, 64]));
+  }
+
+  #[test]
+  fn mm_vector() {
+    let x = Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]);
+    let y = Tensor::new(&[3,1], vec![1, 2, 3]);
+    assert_eq!(x.mm(&y), Tensor::new(&[2,1], vec![14, 32]));
+  }
+
+  #[test]
+  fn mm_vector2() {
+    let x = Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]);
+    let y = Tensor::new(&[3], vec![1, 2, 3]);
+    assert_eq!(x.mm(&y), Tensor::new(&[2], vec![14, 32]));
+  }
+
+  #[test]
+  fn mm_vector_batched() {
+    let x = Tensor::new(&[1,2,3], vec![1, 2, 3, 4, 5, 6]);
+    let y = Tensor::new(&[1,3,1], vec![1, 2, 3]);
+    assert_eq!(x.mm(&y), Tensor::new(&[1,2,1], vec![14, 32]));
+  }
+
+  #[test]
+  fn mm_vector_broadcast() {
+    let x = Tensor::arrange(&[2,2,3], 1, 1);
+
+    let y = Tensor::new(&[3,1], vec![1, 2, 3]);
+    assert_eq!(x.mm(&y), Tensor::new(&[2,2,1], vec![14, 32, 50, 68]));
+
+    let y = Tensor::new(&[3], vec![1, 2, 3]);
+    assert_eq!(x.mm(&y), Tensor::new(&[2,2], vec![14, 32, 50, 68]));
+  }
+
+  #[test]
+  fn mm_vector_left_squeeze() {
+    let x = Tensor::new(&[3], vec![1, 2, 3]);
+    let y = Tensor::new(&[3,2], vec![1, 2, 3, 4, 5, 6]);
+    assert_eq!(x.mm(&y).shape().dims, vec![2]);
+  }
+
+  #[test]
+  fn mm_shapes() {
+    let t = |shape: &[usize], val: f32| Tensor::fill(shape, val);
+
+    // 1. Matrix × Matrix → [2, 3] × [3, 4] → [2, 4]
+    assert_eq!(t(&[2, 3], 1.0).mm(&t(&[3, 4], 1.0)).shape().dims, vec![2, 4]);
+
+    // 2. Vector × Matrix → [3] × [3, 4] → [4]
+    assert_eq!(t(&[3], 1.0).mm(&t(&[3, 4], 1.0)).shape().dims, vec![4]);
+
+    // 3. Matrix × Vector → [2, 3] × [3] → [2]
+    assert_eq!(t(&[2, 3], 1.0).mm(&t(&[3], 1.0)).shape().dims, vec![2]);
+
+    // 4. Batched Matrix × Matrix → [5, 2, 3] × [5, 3, 4] → [5, 2, 4]
+    assert_eq!(t(&[5, 2, 3], 1.0).mm(&t(&[5, 3, 4], 1.0)).shape().dims, vec![5, 2, 4]);
+
+    // 5. Broadcasted batch → [1, 2, 3] × [5, 3, 4] → [5, 2, 4]
+    assert_eq!(t(&[1, 2, 3], 1.0).mm(&t(&[5, 3, 4], 1.0)).shape().dims, vec![5, 2, 4]);
+
+    // 6. Vector × Vector → should panic
+    assert!(std::panic::catch_unwind(|| t(&[3], 1.0).mm(&t(&[3], 1.0))).is_err());
+
+    // 7. Higher-dimensional broadcasting → [2, 1, 2, 3] × [1, 4, 3, 4] → [2, 4, 2, 4]
+    assert_eq!(t(&[2, 1, 2, 3], 1.0).mm(&t(&[1, 4, 3, 4], 1.0)).shape().dims, vec![2, 4, 2, 4]);
+
+    // 8. Standard matrix multiply → [3, 2] × [2, 5] → [3, 5]
+    assert_eq!(t(&[3, 2], 1.0).mm(&t(&[2, 5], 1.0)).shape().dims, vec![3, 5]);
+
+    // 9. Explicit unsqueeze vector × matrix → [1, 2] × [2, 3] → [1, 3]
+    assert_eq!(t(&[2], 1.0).unsqueeze(0).mm(&t(&[2, 3], 1.0)).shape().dims, vec![1, 3]);
+
+    // 10. Matrix × unsqueezed vector → [3, 2] × [2, 1] → [3, 1]
+    assert_eq!(t(&[3, 2], 1.0).mm(&t(&[2], 1.0).unsqueeze(-1)).shape().dims, vec![3, 1]);
+  }
+
+  #[test]
   fn concat() {
     let a = Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]);
     let b = Tensor::new(&[2,3], vec![7, 8, 9, 10, 11, 12]);
@@ -400,6 +498,12 @@ mod tests {
       Tensor::new(&[2,3], vec![1, 2, 3, 4, 5, 6]),
       Tensor::new(&[2,3], vec![7, 8, 9, 10, 11, 12]),
     ]);
+  }
+
+  #[test]
+  fn max() {
+    let a = Tensor::arrange(&[3,2,2], 0, 1);
+    assert_eq!(a.max(1), Tensor::new(&[3], vec![3, 7, 11]));
   }
 
   #[test]
