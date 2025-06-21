@@ -9,9 +9,10 @@ use crate::{ ops::*, scalar::Real, Variable, Tensor, Module };
 pub trait Layer<I: Real> {
   fn retrained(&self, generator: impl Fn() -> Tensor<I>) -> Self;
   fn dense(&self, size: usize) -> Self;
+  fn dense_biased(&self, size: usize, bias_init: I) -> Self;
   fn dense_shared(&self, size: usize, weights: Option<Self>) -> (Self, Self) where Self: Sized;
   fn dense_taped(&self, size: usize, tape_holder: &Self) -> Self;
-  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) where Self: Sized;
+  fn dense_full(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) where Self: Sized;
   fn conv2d(&self, out_channels: usize, kernel_shape: [usize; 2], pad: bool) -> Self;
   fn layernorm(&self, num_dims: usize, scale: bool) -> Self;
   fn dropout(&self, probability: I, train: bool) -> Self;
@@ -34,15 +35,19 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
     self.dense_shared(size, None).0
   }
 
+  fn dense_biased(&self, size: usize, bias_init: I) -> Self {
+    self.dense_full(size, None, None, bias_init).0
+  }
+
   fn dense_shared(&self, size: usize, weights: Option<Self>) -> (Self, Self) {
-    self.dense_shared_taped(size, weights, None, I::zero())
+    self.dense_full(size, weights, None, I::zero())
   }
 
   fn dense_taped(&self, size: usize, tape_holder: &Self) -> Self {
-    self.dense_shared_taped(size, None, Some(tape_holder), I::zero()).0
+    self.dense_full(size, None, Some(tape_holder), I::zero()).0
   }
 
-  fn dense_shared_taped(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) {
+  fn dense_full(&self, size: usize, weights: Option<Self>, tape_holder: Option<&Self>, bias_init: I) -> (Self, Self) {
     let tape_holder = tape_holder.or_else(|| Some(self) ).unwrap();
     let weights = weights.or_else(|| Some(tape_holder.retrained(|| {
       let dims = [self.dim(-1), size];
