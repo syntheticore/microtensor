@@ -9,7 +9,7 @@ use serde::{ Serialize, Deserialize, de::DeserializeOwned };
 
 use crate::{
   internal::*,
-  ops::{ BaseOps, BaseHops },
+  ops::{ NonOps, BaseOps, BaseHops },
   scalar::Real,
   shape::Shape,
   tensor::Tensor,

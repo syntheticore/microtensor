@@ -8,11 +8,11 @@ use crate::{
   shape::{ Shape, DimensionIterator },
   tensor::Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
-  ops::{ Cops, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
+  ops::{ Cops, NonOps, BaseOps, NumericOps, SignedOps, RealOps, BaseHops },
 };
 
 
-impl<T: Inner> BaseOps<T> for Tensor<T> {
+impl<T: Inner> NonOps<T> for Tensor<T> {
   fn scalar(item: T) -> Self {
     Self::new(&[], vec![item])
   }
@@ -31,6 +31,13 @@ impl<T: Inner> BaseOps<T> for Tensor<T> {
     &self.shape
   }
 
+  fn tensor(&self) -> &Self { self }
+
+  fn reself(other: Tensor<T>) -> Self { other }
+}
+
+
+impl<T: Inner> BaseOps<T> for Tensor<T> {
   fn range(&self, ranges: &[Range<isize>]) -> Self {
     let shape = self.shape.range(ranges);
     let data = self.data.clone();
@@ -123,7 +130,6 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let mut rhs = rhs.clone();
 
     // Unsqueeze vector to match matrix
-    //XXX allow batched matrix vector multiply
     let pad_l = lhs.rank() == 1;
     let pad_r = rhs.rank() == 1;
     assert!(!(pad_l && pad_r), "Use Tensor::dot to multiply two vectors");
@@ -132,7 +138,6 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     }
     if pad_r {
       rhs = rhs.unsqueeze(-1);
-      // rhs = rhs.unsqueeze(0);
     }
 
     // Extend with batch dimension
@@ -177,9 +182,6 @@ impl<T: Numeric> NumericOps<T> for Tensor<T> {
     let cols_r = rhs.shape[-1];
     let last_dims = if pad_l {
       vec![cols_r]
-    } else if pad_r {
-      // vec![rows_l]
-      vec![rows_l, cols_r]
     } else {
       vec![rows_l, cols_r]
     };

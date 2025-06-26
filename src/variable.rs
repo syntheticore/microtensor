@@ -16,7 +16,7 @@ use crate::{
   internal::*,
   tensor::Tensor,
   scalar::Real,
-  ops::{ BaseOps, NumericOps, SignedOps, BaseHops, NumericHops, RealHops },
+  ops::{ NonOps, BaseOps, NumericOps, SignedOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -270,10 +270,6 @@ impl<T: Real> Variable<T> {
 
   pub fn id(&self) -> usize {
     self.node.id
-  }
-
-  pub fn tensor(&self) -> &Tensor<T> {
-    &self.node.cell.data
   }
 
   pub fn grad(&self) -> Option<&Tensor<T>> {

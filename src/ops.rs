@@ -4,26 +4,34 @@ use num_traits::NumOps;
 
 use crate::{
   internal::*,
-  Shape,
+  Shape, Tensor,
   scalar::{ Inner, Numeric, Signed, Real },
 };
 
 
-/// Low-level compute operations.
+/// Low-level compute operations implemented for all [Numeric] inner types.
 
 pub trait Cops<I: Numeric> {
   fn matmul(&self, rhs: &Self) -> Vec<I>;
 }
 
 
-/// Differentiable mid-level operations that are also implemented
-/// for non-differentiable [Inner] types.
+/// Low-level operations implemented for all [Inner] types.
 
-pub trait BaseOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
+pub trait NonOps<I: Inner>: Clone + std::fmt::Display + std::fmt::Debug {
   fn scalar(item: I) -> Self;
   fn fill(shape: &[usize], filler: I) -> Self;
   fn item(&self) -> I;
   fn shape(&self) -> &Shape;
+  fn tensor(&self) -> &Tensor<I>;
+  fn reself(other: Tensor<I>) -> Self;
+}
+
+
+/// Differentiable mid-level operations that are also implemented
+/// for non-differentiable [Inner] types.
+
+pub trait BaseOps<I: Inner>: NonOps<I> {
   fn range(&self, ranges: &[Range<isize>]) -> Self;
   fn broadcast(&self, shape: &Shape, ignore_from: Option<isize>) -> Self;
   fn reshape(&self, dims: &[usize]) -> Self;
@@ -82,6 +90,7 @@ fn make_ranges(indices: &[isize], shape: &Shape) -> Vec<Range<isize>> {
     })
     .collect()
 }
+
 
 /// High-level operations, implemented exclusively on top of
 /// Mops and other Hops. As a result, these are all
@@ -365,6 +374,10 @@ where
     self.max_with(&Self::scalar(min))
   }
 
+  fn clamp_max(&self, max: I) -> Self {
+    self.min_with(&Self::scalar(max))
+  }
+
   fn swish(&self, beta: &Self) -> Self {
     self * &(self * beta).sigmoid()
   }
@@ -377,6 +390,13 @@ where
     let max = self.max(dim).extend(self.rank());
     let exp = (self - &max).exp();
     &exp / &exp.sum(dim).extend(exp.rank())
+  }
+
+  fn log_softmax(&self, dim: isize) -> Self {
+    let max = self.max(dim).extend(self.rank());
+    let shifted = self - &max;
+    let logsumexp = shifted.exp().sum(dim).log().extend(shifted.rank());
+    shifted - logsumexp
   }
 
   fn convolve2d(&self, kernels: &Self, step: [usize; 2], bias: Option<&Self>, padding: bool) -> Self {
@@ -424,9 +444,29 @@ where
       .mm(value)
   }
 
-  fn cross_entropy(&self, other: &Self) -> Self {
-    let this = self + I::from(1e-9).unwrap();
-    (&this.log() * other).sum(-1) * (-I::one())
+  fn cross_entropy(&self, target_indices: &Tensor<usize>) -> Self {
+    let target = Self::reself(target_indices.one_hot(self.shape()[-1]));
+    let smax = self.softmax(-1) + I::from(1e-9).unwrap();
+    (smax.log() * target).sum(-1) * -I::one()
+    // let log_probs = self.log_softmax(-1);
+    // let selection = log_probs.look_up(target_indices);
+    // selection * -I::one()
+  }
+
+  fn kl_divergence(&self, other: &Self, mean: bool) -> Self {
+    let epsilon = I::from(1e-9).unwrap();
+    let q = other + epsilon;
+    let p = self + epsilon;
+    let kl = &q * &(q.log() - p.log());
+    if mean {
+      kl.mean(-1)
+    } else {
+      kl.sum(-1)
+    }
+  }
+
+  fn cosine_similarity(&self, other: &Self) -> Self {
+    self.dot(&other, -1) / (self.norm(-1) * other.norm(-1))
   }
 
   fn mse(&self, other: &Self) -> Self {

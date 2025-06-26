@@ -8,11 +8,11 @@ use crate::{
   tensor::Tensor,
   variable::{ Variable, UnaryOp, BinaryOp, MultiOp },
   scalar::Real,
-  ops::{ BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops, RealHops },
+  ops::{ NonOps, BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops, RealHops },
 };
 
 
-impl<T: Real> BaseOps<T> for Variable<T> {
+impl<T: Real> NonOps<T> for Variable<T> {
   fn scalar(item: T) -> Self {
     Self::from_tensor(Tensor::scalar(item), false)
   }
@@ -29,6 +29,14 @@ impl<T: Real> BaseOps<T> for Variable<T> {
     self.node.cell.data.shape()
   }
 
+  fn tensor(&self) -> &Tensor<T> {
+    &self.node.cell.data
+  }
+
+  fn reself(other: Tensor<T>) -> Self { Self::from_tensor(other, false) }
+}
+
+impl<T: Real> BaseOps<T> for Variable<T> {
   fn range(&self, ranges: &[std::ops::Range<isize>]) -> Self {
     self.unary_op(Range { ranges: ranges.to_vec() })
   }
@@ -415,7 +423,7 @@ impl<T: Real> UnaryOp<T> for Range {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let out = Tensor::zeros(&lhs.shape().dims);
+    let out = Tensor::zeros_like(&lhs);
     let sliced = out.shape().range(&self.ranges);
     {
       let mut out_raw = out.raw_mut();
@@ -443,7 +451,7 @@ impl<T: Real> BinaryOp<T> for LookUp {
     for (tok_grad, token) in grad.iter(-2).zip(tokens.iter(-1)) {
       out.at(&[token.cast().item()]).op_assign(&tok_grad, |a, b| *a += b )
     }
-    (out, Tensor::scalar(T::from(0.0).unwrap()))
+    (out, Tensor::scalar(T::zero()))
   }
 
   fn as_enum(self) -> BinaryMops { BinaryMops::LookUp(self) }
@@ -995,5 +1003,32 @@ mod tests {
       x.mm(&y)
     });
     assert!(err_batched_vec < 1e-2);
+  }
+
+  #[test]
+  fn max_over_backward() {
+    let a = Tensor::new(&[2, 3, 2], vec![
+      1.0, 4.0,
+      3.0, 2.0,
+      0.0, 1.0,
+      5.0, 1.0,
+      2.0, 6.0,
+      3.0, 4.0
+    ]).trained();
+
+    let out = a.max_over(1);
+    out.backward();
+    let grad = a.grad().unwrap();
+
+    let expected = Tensor::new(&[2, 3, 2], vec![
+      0.0, 1.0,
+      1.0, 0.0,
+      0.0, 0.0,
+      1.0, 0.0,
+      0.0, 1.0,
+      0.0, 0.0
+    ]);
+
+    assert_eq!(*grad, expected);
   }
 }

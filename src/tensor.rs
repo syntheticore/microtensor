@@ -17,7 +17,7 @@ use crate::{
   shape::{ Shape, DimensionIterator, SwitchIterator },
   variable::{ Variable, Traintape },
   scalar::{ Inner, Numeric, Real, Integer, Signed, Unsigned },
-  ops::{ BaseOps, NumericOps, RealOps, BaseHops, NumericHops, RealHops },
+  ops::{ NonOps, BaseOps, NumericOps, RealOps, BaseHops, NumericHops, RealHops },
 };
 
 
@@ -386,6 +386,7 @@ impl<T: Numeric> Tensor<T> {
     self.zip(rhs, |(a, b)| a % b )
   }
 
+  //XXX Should be differentiable
   pub fn sum_over(&self, dim: isize) -> Self {
     let dim = negative_index(dim, self.rank(), false);
     if dim == self.rank() - 1 {
@@ -642,6 +643,7 @@ impl Tensor<bool> {
     self.zip(rhs, |(a, b)| a || b )
   }
 
+  //XXX choose dimension
   pub fn all(&self) -> Option<bool> {
     self.reduce(|acc, a| acc && a ).and_then(|value| Some(value.item()) )
   }
@@ -650,6 +652,7 @@ impl Tensor<bool> {
     self.reduce(|acc, a| acc || a ).and_then(|value| Some(value.item()) )
   }
 
+  //XXX Should be differentiable
   pub fn when<O: Inner>(&self, either: Tensor<O>, or: Tensor<O>) -> Tensor<O> {
     let shape = self.shape.broadcast(&either.shape, None).broadcast(&or.shape, None);
     let this = self.broadcast(&shape, None);

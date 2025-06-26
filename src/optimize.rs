@@ -4,7 +4,7 @@ use crate::{
   scalar::Real,
   tensor::Tensor,
   variable::Variable,
-  ops::{ BaseOps, NumericHops, RealHops },
+  ops::{ NonOps, NumericHops, RealHops },
 };
 
 
