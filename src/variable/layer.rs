@@ -18,6 +18,7 @@ pub trait Layer<I: Real> {
   fn dropout(&self, probability: I, train: bool) -> Self;
   fn embed(&self, vocab_len: usize, embed_dim: usize) -> Self;
   fn embed_shared(&self, vocab_len: usize, embed_dim: usize, downscale: bool) -> (Self, Self) where Self: Sized;
+  fn scalar_gate(&self, init: I) -> Self;
   fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self;
   fn lstm(&self, num_layers: usize, hidden_size: usize, output_size: usize, full: bool) -> Self;
   fn lstm_block(&self, num_layers: usize, hidden_size: usize, output_size: usize, hidden: Arc<RwLock<Vec<(Self, Self)>>>) -> Self where Self: Sized;
@@ -97,6 +98,10 @@ impl<I: Real + Serialize + DeserializeOwned> Layer<I> for Variable<I> {
       Tensor::randn(&[vocab_len, embed_dim]) * gain
     });
     (table.look_up(self), table)
+  }
+
+  fn scalar_gate(&self, init: I) -> Self {
+    self.retrained(|| Tensor::scalar(init) ).sigmoid()
   }
 
   fn multi_head_attention(&self, key_value: &Self, mask: &Self, num_heads: usize) -> Self {
