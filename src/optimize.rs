@@ -194,3 +194,70 @@ impl<R: Real> Strategy<R> for Adam<R> {
     mt * -rate / (vt.sqrt() + R::from(1e-8).unwrap())
   }
 }
+
+
+/// Adaptive Movement Estimation strategy
+/// with decoupled weight decay
+
+#[derive(Debug, Clone)]
+pub struct AdamW<R: Real> {
+  pub beta1: R,
+  pub beta2: R,
+  pub weight_decay: R,
+  m: HashMap<usize, Tensor<R>>,
+  v: HashMap<usize, Tensor<R>>,
+}
+
+impl<R: Real> AdamW<R> {
+  pub fn new(beta1: R, beta2: R, weight_decay: R) -> Self {
+    Self {
+      beta1,
+      beta2,
+      weight_decay,
+      m: HashMap::new(),
+      v: HashMap::new(),
+    }
+  }
+}
+
+impl<R: Real> Default for AdamW<R> {
+  fn default() -> Self {
+    Self::new(
+      R::from(0.9).unwrap(),
+      R::from(0.999).unwrap(),
+      R::from(0.01).unwrap(),
+    )
+  }
+}
+
+impl<R: Real> Strategy<R> for AdamW<R> {
+  fn update(&mut self, param: &Variable<R>, rate: R, step: usize) -> Tensor<R> {
+    let id = param.id();
+    let weights = param.tensor();
+    let grad = param.grad().unwrap();
+
+    if self.m.get(&id).is_none() {
+      let shape = &weights.shape().dims;
+      self.m.insert(id, Tensor::zeros(shape));
+      self.v.insert(id, Tensor::zeros(shape));
+    }
+
+    let m = self.m.get_mut(&id).unwrap();
+    let v = self.v.get_mut(&id).unwrap();
+
+    m.assign(&(m.clone() * self.beta1 + grad * (R::one() - self.beta1)));
+    v.assign(&(v.clone() * self.beta2 + grad.powf(R::from(2.0).unwrap()) * (R::one() - self.beta2)));
+
+    let step = R::from(step).unwrap();
+    let mt = m.clone() / (R::one() - self.beta1.powf(step));
+    let vt = v.clone() / (R::one() - self.beta2.powf(step));
+
+    // Standard Adam update
+    let adam_update = mt * -rate / (vt.sqrt() + R::from(1e-8).unwrap());
+
+    // Decoupled weight decay
+    let decay = weights.clone() * -(self.weight_decay * rate);
+
+    adam_update + decay
+  }
+}
