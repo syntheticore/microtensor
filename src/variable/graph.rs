@@ -256,6 +256,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         op: node.op.clone(),
         previous: node.previous.iter().map(|prev| prev.id ).collect(),
         trainable: node.trainable,
+        param_group: node.param_group,
         was_shared: node.op.is_some() && node.cell.data.shared_with(&node.previous[0].cell.data),
       }
     }).collect();
@@ -286,6 +287,7 @@ impl<T: Real + Serialize + DeserializeOwned + 'static> Graph<T> {
         previous,
         trainable: dump.trainable,
         traintape: None,
+        param_group: dump.param_group,
       };
       nodes.insert(node.id, RcT::new(node));
     }
@@ -316,6 +318,7 @@ struct NodeDump<T: Real + 'static> {
   op: Option<Op>,
   previous: Vec<usize>,
   trainable: bool,
+  param_group: usize,
   was_shared: bool,
 }
 

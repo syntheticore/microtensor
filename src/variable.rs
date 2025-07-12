@@ -42,6 +42,17 @@ pub fn autograd() -> bool {
 }
 
 
+static PARAM_GROUP: AtomicUsize = AtomicUsize::new(0);
+
+pub fn get_param_group() -> usize {
+  PARAM_GROUP.load(Ordering::Relaxed)
+}
+
+pub fn set_param_group(group: usize) {
+  PARAM_GROUP.store(group, Ordering::Relaxed);
+}
+
+
 /// Unary computational operation that can also compute its derivative.
 
 pub trait UnaryOp<T: Real>: Debug + Send + Sync {
@@ -88,6 +99,7 @@ pub(crate) struct Node<T: Real> {
   previous: Vec<RcT<Self>>,
   trainable: bool,
   traintape: Option<RcCell<Traintape<T>>>,
+  param_group: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +136,7 @@ impl<T: Real> Node<T> {
       previous: vec![],
       trainable,
       traintape,
+      param_group: get_param_group(),
     }
   }
   fn grad(&self) -> Option<&Tensor<T>> {
@@ -264,6 +277,7 @@ impl<T: Real> Variable<T> {
         previous: if autograd() { previous } else { vec![] },
         trainable: false,
         traintape,
+        param_group: 0,
       }),
     }
   }
@@ -274,6 +288,10 @@ impl<T: Real> Variable<T> {
 
   pub fn grad(&self) -> Option<&Tensor<T>> {
     self.node.grad()
+  }
+
+  pub fn param_group(&self) -> usize {
+    self.node.param_group
   }
 
   pub fn unary_op(&self, op: impl UnaryOp<T> + 'static) -> Self {
