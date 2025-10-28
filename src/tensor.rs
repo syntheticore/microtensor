@@ -273,6 +273,15 @@ impl<T: Inner> Tensor<T> {
     //XXX check if RC has other references and copy data if so
     let mut data = self.raw_mut();
     let other_data = other.raw();
+    // Optimize assignment of continuous layouts
+    if self.shape.contiguous() && other.shape.contiguous() &&
+       self.shape.offset == 0 && other.shape.offset == 0 && self.shape.dims == other.shape.dims
+    {
+      for (lhs, rhs) in data.iter_mut().zip(other_data.iter()) {
+        cb(lhs, rhs.clone());
+      }
+      return
+    }
     let other_shape = other.shape.broadcast(&self.shape, None);
     debug_assert!(self.shape.squeeze_all().dims == other_shape.squeeze_all().dims,
       "Could not assign {} tensor to {} tensor", other.shape, self.shape);
