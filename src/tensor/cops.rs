@@ -22,11 +22,12 @@ impl<T: Numeric> Cops<T> for Tensor<T> {
 
     let mut data = vec![T::zero(); rows_l * cols_r];
     for i in 0..rows_l {
-      for j in 0..cols_r {
-        for k in 0..rows_r {
-          data[i * cols_r + j] +=
-            data_l[offset_l + i * cols_l + k] *
-            data_r[offset_r + k * cols_r + j];
+      let lhs_row = offset_l + i * cols_l;
+      for k in 0..rows_r {
+        let rhs_row = offset_r + k * cols_r;
+        let lhs_val = data_l[lhs_row + k];
+        for j in 0..cols_r {
+          data[i * cols_r + j] += lhs_val * data_r[rhs_row + j];
         }
       }
     }

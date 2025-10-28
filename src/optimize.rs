@@ -90,10 +90,9 @@ impl<R: Real> Default for Momentum<R> {
 impl<R: Real> Strategy<R> for Momentum<R> {
   fn update(&mut self, param: &Variable<R>, rate: R, _step: usize) -> Tensor<R> {
     let id = param.id();
-    let weights = param.tensor();
     let grad = param.grad().unwrap();
     if self.v.get(&id).is_none() {
-      let shape = &weights.shape().dims;
+      let shape = &grad.shape().dims;
       self.v.insert(id, Tensor::zeros(shape));
     }
     let v = self.v.get(&id).unwrap();
@@ -131,10 +130,9 @@ impl<R: Real> Default for Nesterov<R> {
 impl<R: Real> Strategy<R> for Nesterov<R> {
   fn update(&mut self, param: &Variable<R>, rate: R, _step: usize) -> Tensor<R> {
     let id = param.id();
-    let weights = param.tensor();
     let grad = param.grad().unwrap();
     if self.v.get(&id).is_none() {
-      let shape = &weights.shape().dims;
+      let shape = &grad.shape().dims;
       self.v.insert(id, Tensor::zeros(shape));
       self.v_prev.insert(id, Tensor::zeros(shape));
     }
@@ -177,10 +175,9 @@ impl<R: Real> Default for Adam<R> {
 impl<R: Real> Strategy<R> for Adam<R> {
   fn update(&mut self, param: &Variable<R>, rate: R, step: usize) -> Tensor<R> {
     let id = param.id();
-    let weights = param.tensor();
     let grad = param.grad().unwrap();
     if self.m.get(&id).is_none() {
-      let shape = &weights.shape().dims;
+      let shape = &grad.shape().dims;
       self.m.insert(id, Tensor::zeros(shape));
       self.v.insert(id, Tensor::zeros(shape));
     }
@@ -249,14 +246,14 @@ impl<R: Real> Strategy<R> for AdamW<R> {
     v.assign(&(v.clone() * self.beta2 + grad.powf(R::from(2.0).unwrap()) * (R::one() - self.beta2)));
 
     let step = R::from(step).unwrap();
-    let mt = m.clone() / (R::one() - self.beta1.powf(step));
-    let vt = v.clone() / (R::one() - self.beta2.powf(step));
+    let mt = &*m / (R::one() - self.beta1.powf(step));
+    let vt = &*v / (R::one() - self.beta2.powf(step));
 
     // Standard Adam update
     let adam_update = mt * -rate / (vt.sqrt() + R::from(1e-8).unwrap());
 
     // Decoupled weight decay
-    let decay = weights.clone() * -(self.weight_decay * rate);
+    let decay = weights * -(self.weight_decay * rate);
 
     adam_update + decay
   }
