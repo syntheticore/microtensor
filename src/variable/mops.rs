@@ -153,6 +153,10 @@ impl<T: Real> RealOps<T> for Variable<T> {
   fn sigmoid(&self) -> Variable<T> {
     self.unary_op(Sigmoid)
   }
+
+  fn silu(&self) -> Self {
+    self.unary_op(SiLU)
+  }
 }
 
 impl<T: Real> std::ops::Neg for &Variable<T> {
@@ -868,6 +872,23 @@ impl<T: Real> UnaryOp<T> for Sigmoid {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiLU;
+
+impl<T: Real> UnaryOp<T> for SiLU {
+  fn run(&self, lhs: &Tensor<T>) -> Tensor<T> {
+    lhs.silu()
+  }
+
+  fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
+    let sig = lhs.sigmoid();
+    grad * (&sig + lhs * &sig * (Tensor::scalar(T::one()) - &sig))
+  }
+
+  fn as_enum(self) -> UnaryMops { UnaryMops::SiLU(self) }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum UnaryMops {
   Range(Range),
   Broadcast(Broadcast),
@@ -886,6 +907,7 @@ pub enum UnaryMops {
   MaxOver(MaxOver),
   ReLU(ReLU),
   Sigmoid(Sigmoid),
+  SiLU(SiLU),
 }
 
 impl UnaryMops {
@@ -908,6 +930,7 @@ impl UnaryMops {
       Self::MaxOver(op) => op,
       Self::ReLU(op) => op,
       Self::Sigmoid(op) => op,
+      Self::SiLU(op) => op,
     }
   }
 }

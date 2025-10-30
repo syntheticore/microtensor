@@ -77,6 +77,7 @@ pub trait RealOps<I: Real>: NumericOps<I> + SignedOps<I> {
   fn log(&self) -> Self;
   fn relu(&self) -> Self;
   fn sigmoid(&self) -> Self;
+  fn silu(&self) -> Self;
 }
 
 
@@ -380,10 +381,6 @@ where
 
   fn swish(&self, beta: &Self) -> Self {
     self * &(self * beta).sigmoid()
-  }
-
-  fn silu(&self) -> Self {
-    self * &self.sigmoid()
   }
 
   fn softmax(&self, dim: isize) -> Self {

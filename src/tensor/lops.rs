@@ -282,6 +282,14 @@ impl<T: Real> RealOps<T> for Tensor<T> {
   fn sigmoid(&self) -> Self {
     self.vectorize(|a| T::one() / (T::one() + (-a).exp()) )
   }
+
+  fn silu(&self) -> Self {
+    self.vectorize(|a| {
+      let one = T::one();
+      let sig = one / (one + (-a).exp());
+      a * sig
+    })
+  }
 }
 
 impl<T: Signed> std::ops::Neg for &Tensor<T> {
