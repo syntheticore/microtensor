@@ -138,7 +138,10 @@ impl<T: Inner> Tensor<T> {
   }
 
   pub fn is_complete(&self) -> bool {
-    self.shape.complete() && (self.size() == self.raw().len())
+    // self.shape.complete() && (self.size() == self.raw().len())
+    let out = self.shape.complete();
+    if out { debug_assert!(self.size() == self.raw().len(), "Complete tensor had wrong storage size") }
+    out
   }
 
   pub fn complete(&self) -> Self {
@@ -274,8 +277,9 @@ impl<T: Inner> Tensor<T> {
     let mut data = self.raw_mut();
     let other_data = other.raw();
     // Optimize assignment of continuous layouts
-    if self.shape.contiguous() && other.shape.contiguous() &&
-       self.shape.offset == 0 && other.shape.offset == 0 && self.shape.dims == other.shape.dims
+    if self.shape.offset == 0 && other.shape.offset == 0 &&
+       self.shape.dims == other.shape.dims &&
+       self.shape.contiguous() && other.shape.contiguous()
     {
       for (lhs, rhs) in data.iter_mut().zip(other_data.iter()) {
         cb(lhs, rhs.clone());
