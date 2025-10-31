@@ -8,7 +8,7 @@ use crate::{
   tensor::Tensor,
   variable::{ Variable, UnaryOp, BinaryOp, MultiOp },
   scalar::Real,
-  ops::{ NonOps, BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops, RealHops },
+  ops::{ NonOps, BaseOps, NumericOps, SignedOps, RealOps, BaseHops, NumericHops },
 };
 
 
@@ -333,11 +333,19 @@ impl<T: Real> BinaryOp<T> for Div {
     lhs / rhs
   }
 
-  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>)
-  {(
-    grad / rhs,
-    -grad * lhs / rhs / rhs
-  )}
+  fn derive(&self, lhs: &Tensor<T>, rhs: &Tensor<T>, grad: &Tensor<T>) -> (Tensor<T>, Tensor<T>) {
+    let shape = grad.shape();
+    let lhs_b = lhs.broadcast(shape, None);
+    let rhs_b = rhs.broadcast(shape, None);
+    let cap = shape.size();
+    let mut lhs_grad = Vec::with_capacity(cap);
+    let mut rhs_grad = Vec::with_capacity(cap);
+    for ((g, l), r) in grad.param_iter().zip(lhs_b.param_iter()).zip(rhs_b.param_iter()) {
+      lhs_grad.push(g / r);
+      rhs_grad.push(-g * l / (r * r));
+    }
+    (Tensor::new(&shape.dims, lhs_grad), Tensor::new(&shape.dims, rhs_grad))
+  }
 
   fn as_enum(self) -> BinaryMops { BinaryMops::Div(self) }
 }
@@ -662,7 +670,11 @@ impl<T: Real> UnaryOp<T> for Tanh {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    grad * (Tensor::scalar(T::one()) - lhs.tanh().sqr())
+    let one = T::one();
+    grad.zip(lhs, move |(g, x)| {
+      let th = x.tanh();
+      g * (one - th * th)
+    })
   }
 
   fn as_enum(self) -> UnaryMops { UnaryMops::Tanh(self) }
@@ -847,7 +859,8 @@ impl<T: Real> UnaryOp<T> for ReLU {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    grad * lhs.gt(&Tensor::scalar(T::zero())).numeric()
+    let zero = T::zero();
+    grad.zip(lhs, move |(g, x)| if x > zero { g } else { zero })
   }
 
   fn as_enum(self) -> UnaryMops { UnaryMops::ReLU(self) }
@@ -863,8 +876,11 @@ impl<T: Real> UnaryOp<T> for Sigmoid {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let result = lhs.sigmoid();
-    grad * (&result * (Tensor::scalar(T::one()) - &result))
+    let one = T::one();
+    grad.zip(lhs, move |(g, x)| {
+      let sig = one / (one + (-x).exp());
+      g * sig * (one - sig)
+    })
   }
 
   fn as_enum(self) -> UnaryMops { UnaryMops::Sigmoid(self) }
@@ -880,8 +896,11 @@ impl<T: Real> UnaryOp<T> for SiLU {
   }
 
   fn derive(&self, lhs: &Tensor<T>, grad: &Tensor<T>) -> Tensor<T> {
-    let sig = lhs.sigmoid();
-    grad * (&sig + lhs * &sig * (Tensor::scalar(T::one()) - &sig))
+    let one = T::one();
+    grad.zip(lhs, |(g, x)| {
+      let sig = one / (one + (-x).exp());
+      g * (sig + x * sig * (one - sig))
+    })
   }
 
   fn as_enum(self) -> UnaryMops { UnaryMops::SiLU(self) }
